@@ -10,7 +10,7 @@
 - **上游代理链式转发**：可把 Scanning 接在本地 VPN/公司代理前面，支持 HTTP/HTTPS 上游代理与 Basic 认证。
 - **桌面应用抓包**：选择可执行文件后以子进程启动并注入代理环境变量，不修改系统代理；流量可归因到进程名、PID 与可执行文件路径。
 - **进程注入抓包（Windows 实验）**：向不读取代理设置的桌面进程注入 Hook DLL，通过 IAT Hook 接管 `connect` / `WSAConnect` / `ConnectEx`，把 80/443 直连流量送入本机 MITM 代理。不依赖 WinDivert 或内核驱动。
-- **网易云 EAPI 解码**：自动识别 `*.music.163.com` 的 `/eapi/` 请求与响应，使用 AES-128-ECB 解密并以 JSON 展示；下载按钮默认导出 `.json`，同时保留原始密文 `.bin` 下载。
+- **网易云 EAPI 解码**：自动识别 `*.music.163.com` 的 `/eapi/`、`/xeapi/` 请求与响应，使用 AES-128-ECB 解密并以 JSON 展示；下载按钮默认导出 `.json`，同时保留原始密文 `.bin` 下载。
 - **关键字全文搜索**：在过滤框直接输入关键字（例如 `Taylor Swift`），服务端会同时检索 URL、请求/响应头与完整正文（含 EAPI 解密后的 JSON），实时过滤 Flow 列表。
 - **JSON 全屏查看**：响应 JSON 支持全屏弹窗与可折叠树形展示；字符串中的 http(s) 链接可直接点击在新标签页打开。
 - **系统代理一键接管**：Windows 下可一键把系统代理切到 8899，自动备份原设置并支持还原；退出程序时会安全恢复。
@@ -177,7 +177,7 @@ bin/scanning.exe
 - DLL 扫描目标进程所有模块的 IAT，把 `ws2_32` 的 `connect`、`WSAConnect`、`WSAIoctl`（用于获取 `ConnectEx`）替换为 detour，并定期重扫新加载模块；
 - detour 在目标 socket 上连接本机代理并完成 HTTP CONNECT 握手，代理按 TLS SNI / HTTP Host 还原域名后复用现有 Flow、规则、断点、重放与会话能力；
 - 不使用 WinDivert、WFP 或内核驱动；只要与目标进程权限/完整性级别相同即可，通常无需管理员。
-- 对网易云 `*.music.163.com` 的 `/eapi/` 流量，后端自动用 AES-128-ECB 解密 `params` 与响应体；请求/响应以 JSON 预览和格式化展示。点击「下载 JSON」导出 `.json`，锁形图标可下载原始密文 `.bin`。
+- 对网易云 `*.music.163.com` 的 `/eapi/`、`/xeapi/` 流量，后端自动用 AES-128-ECB 解密响应体（`/eapi/` 请求同时解密 `params`）；请求/响应以 JSON 预览和格式化展示。点击「下载 JSON」导出 `.json`，锁形图标可下载原始密文 `.bin`。
 
 实测（2026-10-23，网易云音乐 3.1.40 x64）：注入主进程后成功捕获并解密 `interfacepc.music.163.com`、`clientlog3.music.163.com` 等 HTTPS 请求，Flow 正确归因为 `cloudmusic.exe`（PID 27876）。
 

@@ -29,7 +29,9 @@ func TestIsEAPI(t *testing.T) {
 		want       bool
 	}{
 		{"interfacepc.music.163.com", "/eapi/v6/playlist/detail", true},
+		{"interfacepc.music.163.com", "/xeapi/v6/playlist/detail", true},
 		{"music.163.com", "/eapi/song/enhance/player/url", true},
+		{"music.163.com", "/xeapi/song/enhance/player/url", true},
 		{"interfacepc.music.163.com", "/api/v6/playlist/detail", false},
 		{"example.com", "/eapi/v6/playlist/detail", false},
 	}

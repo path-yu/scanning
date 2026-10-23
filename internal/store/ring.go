@@ -226,6 +226,60 @@ func (r *Ring) Patch(id string, patch flow.Patch) (*flow.Flow, bool) {
 	return f.Clone(), true
 }
 
+// Remove 删除指定 ID 的 Flow，保留其余 Flow 的序号与顺序，返回实际删除数量。
+func (r *Ring) Remove(ids []string) int {
+	if len(ids) == 0 {
+		return 0
+	}
+	remove := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id != "" {
+			remove[id] = struct{}{}
+		}
+	}
+	if len(remove) == 0 {
+		return 0
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	kept := make([]*flow.Flow, 0, r.count)
+	removed := 0
+	for i := 0; i < r.count; i++ {
+		idx := (r.start + i) % r.capacity
+		f := r.slots[idx]
+		if f == nil {
+			continue
+		}
+		if _, ok := remove[f.ID]; ok {
+			removed++
+			continue
+		}
+		kept = append(kept, f)
+	}
+	if removed == 0 {
+		return 0
+	}
+
+	for i := 0; i < r.capacity; i++ {
+		r.slots[i] = nil
+	}
+	r.start = 0
+	r.count = 0
+	r.byID = make(map[string]int, r.capacity)
+	r.bytes = 0
+	// nextSeq 与 evicted 有意不重置：删除单条 Flow 不应让后续序号回退，
+	// 也不应丢失累计淘汰统计。
+	for _, f := range kept {
+		r.slots[r.count] = f
+		r.byID[f.ID] = r.count
+		r.count++
+		r.bytes += f.ReqSize + f.RespSize
+	}
+	return removed
+}
+
 func (r *Ring) Clear() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()

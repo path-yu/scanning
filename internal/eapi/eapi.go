@@ -21,7 +21,9 @@ func IsEAPI(host, path string) bool {
 	if host != "music.163.com" && !strings.HasSuffix(host, ".music.163.com") {
 		return false
 	}
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(path)), "/eapi/")
+	path = strings.ToLower(strings.TrimSpace(path))
+	// 桌面端新版接口使用 /xeapi/ 前缀，加密方式与 /eapi/ 相同。
+	return strings.HasPrefix(path, "/eapi/") || strings.HasPrefix(path, "/xeapi/")
 }
 
 // DecryptResponse 尝试解密 EAPI 响应体，成功时返回 JSON 字节。

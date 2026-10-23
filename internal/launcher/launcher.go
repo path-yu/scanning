@@ -85,13 +85,14 @@ type Recent struct {
 }
 
 type Manager struct {
-	mu          sync.Mutex
-	dataDir     string
-	recentPath  string
-	apps        map[string]*App
-	order       []string
-	recent      []Recent
-	flowCounter func(appName string, pid int, since time.Time) int
+	mu              sync.Mutex
+	dataDir         string
+	recentPath      string
+	apps            map[string]*App
+	order           []string
+	recent          []Recent
+	flowCounter     func(appName string, pid int, since time.Time) int
+	startupInjector func(pid int) error
 }
 
 func NewManager(dataDir string) *Manager {
@@ -109,6 +110,23 @@ func (m *Manager) SetFlowCounter(fn func(appName string, pid int, since time.Tim
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.flowCounter = fn
+}
+
+// SetStartupInjector 设置应用启动前的 Hook 注入函数。
+// Windows 下应用会以挂起状态创建，注入完成后再恢复主线程，避免应用先建立直连。
+func (m *Manager) SetStartupInjector(fn func(pid int) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.startupInjector = fn
+}
+
+func callStartupInjector(fn func(int) error, pid int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("启动前注入 Hook 时 panic: %v", r)
+		}
+	}()
+	return fn(pid)
 }
 
 // Launch 以子进程方式启动应用，并注入 HTTP(S)_PROXY 环境变量。
@@ -153,9 +171,17 @@ func (m *Manager) Launch(proxyAddr string, req LaunchRequest) (*App, error) {
 	if req.ChromiumFlags {
 		args = append([]string{"--proxy-server=http://" + proxyAddr}, args...)
 	}
+	m.mu.Lock()
+	injector := m.startupInjector
+	m.mu.Unlock()
+	suspended := injector != nil && suspendedStartSupported
+
 	cmd := exec.Command(executable, args...)
 	cmd.Dir = cwd
 	cmd.Env = BuildEnv(proxyAddr, extraEnv)
+	if suspended {
+		configureSuspended(cmd)
+	}
 
 	var logFile *os.File
 	logPath := ""
@@ -179,6 +205,20 @@ func (m *Manager) Launch(proxyAddr string, req LaunchRequest) (*App, error) {
 			_ = logFile.Close()
 		}
 		return nil, fmt.Errorf("启动应用失败: %w", err)
+	}
+
+	if suspended {
+		pid := cmd.Process.Pid
+		if injectErr := callStartupInjector(injector, pid); injectErr != nil {
+			slog.Warn("启动前注入 Hook 失败，应用将以直连方式启动", "pid", pid, "error", injectErr)
+		}
+		if resumeErr := resumeProcess(pid); resumeErr != nil {
+			_ = cmd.Process.Kill()
+			if logFile != nil {
+				_ = logFile.Close()
+			}
+			return nil, fmt.Errorf("恢复应用主线程失败: %w", resumeErr)
+		}
 	}
 
 	now := time.Now()
@@ -254,7 +294,9 @@ func (m *Manager) diagnose(id, executable, proxyAddr string, started time.Time) 
 			app.Diagnosis = diag
 		}
 		m.mu.Unlock()
-		if diag.Status != "unknown" || attempt == 1 {
+		// 自动注入 Hook 后，启动初期的直连连接可能仍然存在；再观察一轮，
+		// 等经代理的 Flow 产生后把状态纠正为 proxy。
+		if (diag.Status != "unknown" && diag.Status != "direct") || attempt == 1 {
 			return
 		}
 		time.Sleep(6 * time.Second)

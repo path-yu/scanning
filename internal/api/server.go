@@ -93,6 +93,7 @@ type Server struct {
 	lastCount    int64
 	lastStatsAt  time.Time
 	qps          float64
+	pickFileMu   sync.Mutex
 }
 
 func New(opts Options) *Server {

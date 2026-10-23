@@ -9,7 +9,7 @@ import { StatusBar } from '@/components/StatusBar';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { OnboardingDialog } from '@/components/OnboardingDialog';
 import { api } from '@/api';
-import { compileFilter, plainKeyword } from '@/lib/filter';
+import { compileFilter, plainKeyword, type SearchScope } from '@/lib/filter';
 import { useFlowStore } from '@/store/flowStore';
 import type { CaptureStatus, FlowSummary, ProxyStatus, SystemInfo } from '@/types';
 import type { ConnectionStatus } from '@/ws';
@@ -40,6 +40,7 @@ interface ShellProps {
   onDemo: () => Promise<void>;
   demoBusy: boolean;
   onClear: () => Promise<void>;
+  onDeleteFlows: (ids: string[]) => Promise<void>;
   onRefresh: () => Promise<void>;
   refreshing: boolean;
   onExportHar: () => Promise<void>;
@@ -61,6 +62,7 @@ export function Shell({
   onDemo,
   demoBusy,
   onClear,
+  onDeleteFlows,
   onRefresh,
   refreshing,
   onExportHar,
@@ -80,6 +82,8 @@ export function Shell({
 
   const filterInputRef = useRef<HTMLInputElement>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [proxyOpen, setProxyOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -90,11 +94,25 @@ export function Shell({
     () => localStorage.getItem(ONBOARDING_KEY) !== 'done',
   );
   const [view, setView] = useState<MainView>('flows');
+  const [searchScope, setSearchScope] = useState<SearchScope>('url');
 
   const allFlows = useMemo(
     () => order.map((id) => byId.get(id)).filter((flow): flow is FlowSummary => flow !== undefined),
     [byId, order],
   );
+
+  useEffect(() => {
+    setCheckedIds((prev) => {
+      if (!prev.size) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (byId.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [byId]);
 
   const compiled = useMemo(() => compileFilter(filter), [filter]);
   const keyword = useMemo(() => plainKeyword(filter), [filter]);
@@ -106,7 +124,7 @@ export function Shell({
   }>({ query: '', ids: new Set(), loading: false });
 
   useEffect(() => {
-    if (!keyword) {
+    if (!keyword || searchScope === 'url') {
       setBodySearch({ query: '', ids: new Set(), loading: false });
       return;
     }
@@ -114,7 +132,7 @@ export function Shell({
     setBodySearch((prev) => ({ ...prev, loading: true, error: undefined }));
     const timer = window.setTimeout(() => {
       api
-        .searchFlows(keyword, controller.signal)
+        .searchFlows(keyword, searchScope, controller.signal)
         .then((result) => {
           setBodySearch({ query: keyword, ids: new Set(result.ids), loading: false });
         })
@@ -132,15 +150,19 @@ export function Shell({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [keyword]);
+  }, [keyword, searchScope]);
 
-  // 自由关键字除了匹配 Summary 字段外，还并上服务端返回的正文命中 ID。
+  // 请求/响应模式下只展示服务端返回的正文命中 ID；URL 模式直接使用本地字段匹配。
   const activeBodyIds =
-    keyword !== null && bodySearch.query === keyword ? bodySearch.ids : null;
-  const visibleFlows = useMemo(
-    () => allFlows.filter((flow) => compiled.predicate(flow) || Boolean(activeBodyIds?.has(flow.id))),
-    [allFlows, compiled, activeBodyIds],
-  );
+    searchScope !== 'url' && keyword !== null && bodySearch.query === keyword
+      ? bodySearch.ids
+      : null;
+  const visibleFlows = useMemo(() => {
+    if (keyword !== null && searchScope !== 'url') {
+      return activeBodyIds ? allFlows.filter((flow) => activeBodyIds.has(flow.id)) : [];
+    }
+    return allFlows.filter((flow) => compiled.predicate(flow));
+  }, [allFlows, compiled, keyword, searchScope, activeBodyIds]);
 
   const quickCounts = useMemo(
     () => ({
@@ -241,9 +263,41 @@ export function Shell({
     setFilter(filter === value ? '' : value);
   };
 
+  const toggleChecked = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCheckedAll = (ids: string[], checked: boolean) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
   const handleConfirmClear = async () => {
     await onClear();
+    setCheckedIds(new Set());
     setConfirmClear(false);
+  };
+
+  const handleConfirmDeleteSelected = async () => {
+    try {
+      await onDeleteFlows(Array.from(checkedIds));
+      setCheckedIds(new Set());
+    } catch {
+      // 错误由上层统一展示，保留选中项便于重试。
+    } finally {
+      setConfirmDeleteSelected(false);
+    }
   };
 
   const closeOnboarding = () => {
@@ -342,16 +396,25 @@ export function Shell({
                 count={visibleFlows.length}
                 total={allFlows.length}
                 error={compiled.error}
-                searching={keyword !== null && bodySearch.loading}
-                searchError={keyword !== null ? bodySearch.error : undefined}
+                searching={searchScope !== 'url' && keyword !== null && bodySearch.loading}
+                searchError={searchScope !== 'url' && keyword !== null ? bodySearch.error : undefined}
                 inputRef={filterInputRef}
+                searchScope={searchScope}
+                onSearchScopeChange={setSearchScope}
+                selectionCount={checkedIds.size}
+                hasFlows={allFlows.length > 0}
+                onDeleteSelected={() => setConfirmDeleteSelected(true)}
+                onClearAll={() => setConfirmClear(true)}
               />
 
               <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
                 <FlowTable
                   flows={visibleFlows}
                   selectedId={selectedId}
+                  checkedIds={checkedIds}
                   onSelect={select}
+                  onToggleChecked={toggleChecked}
+                  onToggleAll={toggleCheckedAll}
                   emptyTitle={allFlows.length === 0 ? '还没有捕获到流量' : '没有匹配的流量'}
                   emptyHint={
                     allFlows.length === 0
@@ -385,6 +448,15 @@ export function Shell({
         confirmLabel="清空流量"
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => void handleConfirmClear()}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteSelected}
+        title={`删除选中的 ${checkedIds.size} 条请求？`}
+        description="选中请求及其正文缓存会被移除，且无法恢复。"
+        confirmLabel="删除选中"
+        onCancel={() => setConfirmDeleteSelected(false)}
+        onConfirm={() => void handleConfirmDeleteSelected()}
       />
 
       <Suspense fallback={null}>

@@ -54,6 +54,7 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
   const [busy, setBusy] = useState<BusyAction>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hookWarning, setHookWarning] = useState<string | null>(null);
   const [hookName, setHookName] = useState('');
   const [hookAll, setHookAll] = useState(true);
   const [hookScan, setHookScan] = useState(false);
@@ -126,9 +127,18 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
     setBusy('launch');
     setError(null);
     setMessage(null);
+    setHookWarning(null);
     try {
       const app = await api.launchApp(payload);
-      setMessage(`已启动 ${app.name}（PID ${app.pid}），正在检测代理使用情况…`);
+      const injection = app.injection;
+      if (injection?.attempted && injection.injected > 0) {
+        setMessage(`已启动 ${app.name}（PID ${app.pid}），${injection.message}，正在检测代理使用情况…`);
+      } else {
+        setMessage(`已启动 ${app.name}（PID ${app.pid}），正在检测代理使用情况…`);
+        if (injection?.message) {
+          setHookWarning(`${injection.message}。可在下方「进程注入」中手动重试。`);
+        }
+      }
       await refresh();
     } catch (cause) {
       setError(messageOf(cause));
@@ -203,11 +213,12 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
       <DialogContent sx={{ pt: 0.5, pb: 1 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <Alert severity="info" sx={{ py: 0.35 }}>
-            应用将以子进程方式启动，并注入 HTTP(S)_PROXY=http://127.0.0.1:8899，不会修改系统代理。部分应用不读取环境变量，此时可改用网卡抓包或在应用内手动设置代理。
+            应用将以子进程方式启动，并注入 HTTP(S)_PROXY=http://127.0.0.1:8899，不会修改系统代理。Hook DLL 就绪时还会自动注入同名进程；注入失败的应用可改用网卡抓包或在应用内手动设置代理。
           </Alert>
 
           {error ? <Alert severity="error">{error}</Alert> : null}
           {message ? <Alert severity="success">{message}</Alert> : null}
+          {hookWarning ? <Alert severity="warning">{hookWarning}</Alert> : null}
           {directApp?.diagnosis ? (
             <Alert severity="warning">
               {directApp.name} 未检测到经 127.0.0.1:8899 的请求，检测到直连目标：

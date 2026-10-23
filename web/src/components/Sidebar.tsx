@@ -91,7 +91,7 @@ export function Sidebar({
     <Box
       component="aside"
       sx={{
-        width: 236,
+        width: 248,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -118,7 +118,7 @@ export function Sidebar({
                 }
               }}
               sx={{
-                height: 30,
+                height: 32,
                 px: 1,
                 borderRadius: 1,
                 display: 'flex',
@@ -135,14 +135,14 @@ export function Sidebar({
               }}
             >
               <Box sx={{ display: 'flex', color: item.color, flexShrink: 0 }}>{item.icon}</Box>
-              <Typography sx={{ fontSize: 12, flex: 1, fontWeight: active ? 600 : 500 }}>
+              <Typography sx={{ fontSize: 13, flex: 1, fontWeight: active ? 600 : 500 }}>
                 {item.label}
               </Typography>
               <Box
                 component="span"
                 className="mono"
                 sx={{
-                  fontSize: 10,
+                  fontSize: 11,
                   color: active ? 'text.secondary' : 'text.disabled',
                   bgcolor: 'action.hover',
                   borderRadius: 0.75,
@@ -160,12 +160,12 @@ export function Sidebar({
       </Box>
 
       <SectionTitle icon={<DesktopWindows sx={{ fontSize: 13 }} />}>进程</SectionTitle>
-      <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 9, color: 'text.disabled' }}>
+      <Typography sx={{ px: 1.5, pb: 0.5, fontSize: 10.5, color: 'text.disabled' }}>
         仅显示经代理产生流量的进程
       </Typography>
       <Box sx={{ maxHeight: 150, overflow: 'auto', px: 0.75, pb: 0.5 }}>
         {apps.length === 0 ? (
-          <Typography sx={{ px: 1, py: 1, fontSize: 11, color: 'text.disabled' }}>
+          <Typography sx={{ px: 1, py: 1, fontSize: 12, color: 'text.disabled' }}>
             暂无进程信息
           </Typography>
         ) : (
@@ -189,7 +189,7 @@ export function Sidebar({
                     }
                   }}
                   sx={{
-                    height: 26,
+                    height: 28,
                     px: 1,
                     borderRadius: 1,
                     display: 'flex',
@@ -205,7 +205,7 @@ export function Sidebar({
                 >
                   <Typography
                     sx={{
-                      fontSize: 11,
+                      fontSize: 12,
                       color: active ? 'text.primary' : 'text.secondary',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -218,7 +218,7 @@ export function Sidebar({
                   <Box
                     component="span"
                     className="mono"
-                    sx={{ fontSize: 9.5, color: app.errors ? 'error.main' : 'text.disabled' }}
+                    sx={{ fontSize: 10.5, color: app.errors ? 'error.main' : 'text.disabled' }}
                   >
                     {formatNumber(app.count)}
                   </Box>
@@ -232,7 +232,7 @@ export function Sidebar({
       <SectionTitle icon={<Language sx={{ fontSize: 13 }} />}>域名</SectionTitle>
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.75, pb: 1 }}>
         {domains.length === 0 ? (
-          <Typography sx={{ px: 1, py: 1, fontSize: 11, color: 'text.disabled' }}>
+          <Typography sx={{ px: 1, py: 1, fontSize: 12, color: 'text.disabled' }}>
             暂无流量
           </Typography>
         ) : (
@@ -281,7 +281,7 @@ export function Sidebar({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                     <Typography
                       sx={{
-                        fontSize: 11.5,
+                        fontSize: 12.5,
                         color: active ? 'text.primary' : 'text.secondary',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -291,7 +291,7 @@ export function Sidebar({
                     >
                       {domain.host}
                     </Typography>
-                    <Box component="span" className="mono" sx={{ fontSize: 9.5, color: 'text.disabled' }}>
+                    <Box component="span" className="mono" sx={{ fontSize: 10.5, color: 'text.disabled' }}>
                       {formatNumber(domain.count)}
                     </Box>
                   </Box>
@@ -313,18 +313,18 @@ export function Sidebar({
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-            <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: 'text.secondary' }}>
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: 'text.secondary' }}>
               本地缓存
             </Typography>
-            <Box className="mono" sx={{ fontSize: 9.5, color: 'text.disabled' }}>
+            <Box className="mono" sx={{ fontSize: 10.5, color: 'text.disabled' }}>
               {stats ? `${formatNumber(stats.flows)} / ${formatNumber(stats.capacity)}` : '—'}
             </Box>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>
+            <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
               {info?.session.name ?? '默认会话'}
             </Typography>
-            <Typography className="mono" sx={{ fontSize: 9.5, color: 'text.disabled' }}>
+            <Typography className="mono" sx={{ fontSize: 10.5, color: 'text.disabled' }}>
               {formatBytes(stats?.bytes ?? info?.store.bytes ?? 0)}
             </Typography>
           </Box>

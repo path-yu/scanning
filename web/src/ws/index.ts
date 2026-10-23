@@ -7,6 +7,7 @@ interface EventHandlers {
   onStats: (stats: Stats) => void;
   onStatus: (status: ConnectionStatus) => void;
   onCleared?: () => void;
+  onDeleted?: (ids: string[]) => void;
   onCaptureStatus?: (status: CaptureStatus) => void;
 }
 
@@ -85,6 +86,11 @@ export function connectEvents(handlers: EventHandlers): () => void {
         case 'flows.cleared':
           handlers.onCleared?.();
           break;
+        case 'flows.deleted': {
+          const payload = event.data as { ids?: string[] } | undefined;
+          if (payload?.ids?.length) handlers.onDeleted?.(payload.ids);
+          break;
+        }
         default:
           break;
       }

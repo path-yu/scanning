@@ -90,13 +90,13 @@ function StatusPill({ color, label, tooltip }: { color: string; label: string; t
           display: 'flex',
           alignItems: 'center',
           gap: 0.75,
-          height: 24,
+          height: 26,
           px: 1,
           borderRadius: 1,
           border: '1px solid',
           borderColor: 'divider',
           bgcolor: 'action.hover',
-          fontSize: 10.5,
+          fontSize: 11.5,
           color: 'text.secondary',
           whiteSpace: 'nowrap',
         }}
@@ -162,11 +162,11 @@ export function TopBar({
     <Box
       component="header"
       sx={{
-        height: 54,
+        height: 56,
         px: 1.5,
         display: 'flex',
         alignItems: 'center',
-        gap: 1.25,
+        gap: 1,
         borderBottom: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.paper',
@@ -189,11 +189,11 @@ export function TopBar({
       </Box>
 
       <Box sx={{ minWidth: 0, lineHeight: 1 }}>
-        <Box sx={{ fontSize: 14.5, fontWeight: 750, letterSpacing: '-0.02em' }}>Scanning</Box>
+        <Box sx={{ fontSize: 15.5, fontWeight: 750, letterSpacing: '-0.02em' }}>Scanning</Box>
         <Box
           sx={{
             mt: 0.35,
-            fontSize: 8.5,
+            fontSize: 9.5,
             letterSpacing: '0.14em',
             color: 'text.disabled',
             fontWeight: 700,
@@ -216,11 +216,11 @@ export function TopBar({
         sx={{
           display: { xs: 'none', sm: 'flex' },
           '& .MuiToggleButton-root': {
-            height: 26,
+            height: 28,
             px: 1,
             py: 0,
             gap: 0.4,
-            fontSize: 10.5,
+            fontSize: 11.5,
             fontWeight: 700,
             color: 'text.secondary',
             borderColor: 'divider',
@@ -264,12 +264,12 @@ export function TopBar({
         sx={{
           display: { xs: 'none', sm: 'flex' },
           alignItems: 'center',
-          height: 24,
+          height: 26,
           px: 1,
           borderRadius: 1,
           border: '1px solid',
           borderColor: 'divider',
-          fontSize: 10.5,
+          fontSize: 11.5,
           color: 'text.secondary',
           maxWidth: 180,
         }}

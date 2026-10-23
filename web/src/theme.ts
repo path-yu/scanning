@@ -27,13 +27,13 @@ export function createAppTheme(mode: PaletteMode): Theme {
     typography: {
       fontFamily:
         '"Inter", "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
-      fontSize: 13,
-      h6: { fontSize: 14, fontWeight: 650, letterSpacing: '-0.01em' },
-      subtitle2: { fontSize: 12, fontWeight: 600 },
-      body2: { fontSize: 12.5 },
-      caption: { fontSize: 11, letterSpacing: '0.01em' },
-      button: { textTransform: 'none', fontWeight: 600, fontSize: 12.5 },
-      overline: { fontSize: 10, letterSpacing: '0.08em', fontWeight: 700 },
+      fontSize: 14,
+      h6: { fontSize: 15, fontWeight: 650, letterSpacing: '-0.01em' },
+      subtitle2: { fontSize: 13, fontWeight: 600 },
+      body2: { fontSize: 13.5 },
+      caption: { fontSize: 12, letterSpacing: '0.01em' },
+      button: { textTransform: 'none', fontWeight: 600, fontSize: 13 },
+      overline: { fontSize: 10.5, letterSpacing: '0.08em', fontWeight: 700 },
     },
     components: {
       MuiCssBaseline: {
@@ -77,10 +77,10 @@ export function createAppTheme(mode: PaletteMode): Theme {
             textTransform: 'none',
             borderRadius: 7,
             fontWeight: 600,
-            fontSize: 12,
+            fontSize: 13,
             paddingInline: 12,
           },
-          sizeSmall: { height: 28 },
+          sizeSmall: { height: 30 },
         },
       },
       MuiIconButton: {
@@ -92,8 +92,8 @@ export function createAppTheme(mode: PaletteMode): Theme {
       MuiChip: {
         styleOverrides: {
           root: {
-            height: 22,
-            fontSize: 10.5,
+            height: 23,
+            fontSize: 11.5,
             fontWeight: 600,
             borderRadius: 6,
             '& .MuiChip-label': { paddingLeft: 7, paddingRight: 7 },
@@ -105,7 +105,7 @@ export function createAppTheme(mode: PaletteMode): Theme {
         defaultProps: { arrow: true, enterDelay: 450 },
         styleOverrides: {
           tooltip: {
-            fontSize: 11,
+            fontSize: 12,
             padding: '6px 8px',
             borderRadius: 6,
             backgroundColor: dark ? '#1f2937' : '#1e293b',
@@ -119,10 +119,10 @@ export function createAppTheme(mode: PaletteMode): Theme {
         styleOverrides: {
           root: {
             textTransform: 'none',
-            minHeight: 38,
+            minHeight: 40,
             minWidth: 0,
             padding: '0 12px',
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: 600,
             color: textSecondary,
           },
@@ -136,7 +136,7 @@ export function createAppTheme(mode: PaletteMode): Theme {
       MuiInputBase: {
         styleOverrides: {
           root: {
-            fontSize: 12.5,
+            fontSize: 13.5,
             borderRadius: 7,
             backgroundColor: dark ? alpha('#ffffff', 0.025) : alpha('#0f172a', 0.025),
             '&:before, &:after': { display: 'none' },
@@ -178,7 +178,7 @@ export function createAppTheme(mode: PaletteMode): Theme {
       },
       MuiAlert: {
         styleOverrides: {
-          root: { fontSize: 12, borderRadius: 8 },
+          root: { fontSize: 13, borderRadius: 8 },
         },
       },
     },

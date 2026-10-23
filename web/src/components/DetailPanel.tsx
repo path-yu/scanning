@@ -128,7 +128,7 @@ export function DetailPanel({ flowId, onClose, onSelect }: DetailPanelProps) {
                 component="span"
                 className="mono"
                 sx={{
-                  fontSize: 10.5,
+                  fontSize: 11.5,
                   fontWeight: 700,
                   color: statusColor(flow.statusCode),
                   flexShrink: 0,
@@ -152,7 +152,7 @@ export function DetailPanel({ flowId, onClose, onSelect }: DetailPanelProps) {
                 className="mono"
                 sx={{
                   mt: 0.75,
-                  fontSize: 10.5,
+                  fontSize: 11.5,
                   color: 'text.secondary',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -178,7 +178,7 @@ export function DetailPanel({ flowId, onClose, onSelect }: DetailPanelProps) {
           </>
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>流量已不存在或已被淘汰</Typography>
+            <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>流量已不存在或已被淘汰</Typography>
             <IconButton size="small" onClick={onClose}>
               <Close sx={{ fontSize: 15 }} />
             </IconButton>
@@ -428,10 +428,10 @@ function MessageView({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'text.secondary', letterSpacing: '0.04em' }}>
+        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: 'text.secondary', letterSpacing: '0.04em' }}>
           {title}头
         </Typography>
-        <Typography className="mono" sx={{ fontSize: 10, color: 'text.disabled' }}>
+        <Typography className="mono" sx={{ fontSize: 11, color: 'text.disabled' }}>
           {message.httpVersion}
         </Typography>
         <Box sx={{ flex: 1 }} />
@@ -456,25 +456,25 @@ function MessageView({
                 '&:hover': { bgcolor: 'action.hover' },
               }}
             >
-              <Typography className="mono" sx={{ fontSize: 10, color: 'text.disabled', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Typography className="mono" sx={{ fontSize: 11.5, color: 'text.disabled', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {header.name}
               </Typography>
-              <Typography className="mono" sx={{ fontSize: 10, color: 'text.secondary', wordBreak: 'break-all' }}>
+              <Typography className="mono" sx={{ fontSize: 11.5, color: 'text.secondary', wordBreak: 'break-all' }}>
                 {header.value}
               </Typography>
             </Box>
           ))
         ) : (
-          <Typography sx={{ p: 1, fontSize: 10.5, color: 'text.disabled' }}>无 Header</Typography>
+          <Typography sx={{ p: 1, fontSize: 11.5, color: 'text.disabled' }}>无 Header</Typography>
         )}
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'text.secondary', letterSpacing: '0.04em' }}>
+        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: 'text.secondary', letterSpacing: '0.04em' }}>
           正文
         </Typography>
         {message.body ? (
-          <Typography className="mono" sx={{ fontSize: 10, color: 'text.disabled' }}>
+          <Typography className="mono" sx={{ fontSize: 11, color: 'text.disabled' }}>
             {formatBytes(message.body.size)}
           </Typography>
         ) : null}
@@ -500,7 +500,10 @@ const BODY_RENDER_LIMIT = 512 * 1024;
 function isEapiFlow(flow: Flow): boolean {
   const host = (flow.host || '').toLowerCase();
   const path = (flow.path || '').toLowerCase();
-  return (host === 'music.163.com' || host.endsWith('.music.163.com')) && path.startsWith('/eapi/');
+  return (
+    (host === 'music.163.com' || host.endsWith('.music.163.com')) &&
+    (path.startsWith('/eapi/') || path.startsWith('/xeapi/'))
+  );
 }
 
 function extensionForMime(mime: string): string {
@@ -640,10 +643,10 @@ function BodyView({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
         {body.decrypted ? (
-          <Chip size="small" label="EAPI 已解密" color="info" variant="outlined" sx={{ height: 17, fontSize: 9 }} />
+          <Chip size="small" label="EAPI 已解密" color="info" variant="outlined" sx={{ height: 19, fontSize: 10 }} />
         ) : null}
         <Chip size="small" label={bodyQuery.data ? '完整正文' : '预览'} variant="outlined" />
-        {bodyQuery.isFetching ? <Typography sx={{ fontSize: 9.5, color: 'text.disabled' }}>加载中…</Typography> : null}
+        {bodyQuery.isFetching ? <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>加载中…</Typography> : null}
         {largeUnloaded && !bodyQuery.isFetching ? (
           <Button size="small" variant="text" sx={{ height: 24, minWidth: 0 }} onClick={() => setLoadFull(true)}>
             {body.decrypted ? '加载完整解密正文' : '加载完整正文'}（{formatBytes(body.size)}）
@@ -719,7 +722,7 @@ function BodyView({
           p: 1.25,
           maxHeight: 360,
           overflow: 'auto',
-          fontSize: 10.5,
+          fontSize: 12,
           lineHeight: 1.7,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
@@ -781,7 +784,7 @@ function TimingView({ timing, durationMs }: { timing?: Timing; durationMs: numbe
         <Typography sx={{ fontSize: 22, fontWeight: 750, letterSpacing: '-0.03em' }}>
           {formatDuration(durationMs)}
         </Typography>
-        <Typography sx={{ fontSize: 10.5, color: 'text.disabled' }}>总耗时</Typography>
+        <Typography sx={{ fontSize: 11.5, color: 'text.disabled' }}>总耗时</Typography>
       </Box>
 
       <Box sx={{ display: 'flex', height: 10, borderRadius: 2, overflow: 'hidden', bgcolor: 'action.hover' }}>
@@ -808,11 +811,11 @@ function TimingView({ timing, durationMs }: { timing?: Timing; durationMs: numbe
             }}
           >
             <Box sx={{ width: 7, height: 7, borderRadius: 0.5, bgcolor: segment.color }} />
-            <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{segment.label}</Typography>
-            <Typography className="mono" sx={{ fontSize: 10.5, color: 'text.secondary' }}>
+            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{segment.label}</Typography>
+            <Typography className="mono" sx={{ fontSize: 11.5, color: 'text.secondary' }}>
               {formatDuration(segment.value)}
             </Typography>
-            <Typography className="mono" sx={{ fontSize: 9.5, color: 'text.disabled', width: 38, textAlign: 'right' }}>
+            <Typography className="mono" sx={{ fontSize: 10.5, color: 'text.disabled', width: 38, textAlign: 'right' }}>
               {Math.round((segment.value / total) * 100)}%
             </Typography>
           </Box>
@@ -827,7 +830,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     <Box>
       <Typography
         sx={{
-          fontSize: 10,
+          fontSize: 11.5,
           fontWeight: 700,
           letterSpacing: '0.08em',
           color: 'text.disabled',
@@ -849,17 +852,17 @@ function InfoRow({ label, value, mono }: { label: string; value: ReactNode; mono
     <Box
       sx={{
         display: 'grid',
-        gridTemplateColumns: '82px 1fr',
+        gridTemplateColumns: '92px 1fr',
         gap: 1,
         px: 1,
         py: 0.65,
         '& + &': { borderTop: '1px solid', borderTopColor: 'divider' },
       }}
     >
-      <Typography sx={{ fontSize: 10, color: 'text.disabled' }}>{label}</Typography>
+      <Typography sx={{ fontSize: 11.5, color: 'text.disabled' }}>{label}</Typography>
       <Box
         className={mono ? 'mono' : undefined}
-        sx={{ fontSize: 10.5, color: 'text.secondary', wordBreak: 'break-all', minWidth: 0 }}
+        sx={{ fontSize: 12, color: 'text.secondary', wordBreak: 'break-all', minWidth: 0 }}
       >
         {value}
       </Box>
@@ -878,7 +881,7 @@ function EmptyState({ text, compact }: { text: string; compact?: boolean }) {
         borderColor: 'divider',
         borderRadius: 1,
         color: 'text.disabled',
-        fontSize: 11,
+        fontSize: 12,
       }}
     >
       {text}

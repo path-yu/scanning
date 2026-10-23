@@ -125,6 +125,23 @@ func New(opts Options) (*App, error) {
 		DLLPath: opts.Config.Hook.DLLPath,
 		Ports:   opts.Config.Hook.Ports,
 	})
+	// Windows 下应用以挂起状态创建，先注入 Hook DLL 再恢复，确保首批网络连接也经过代理。
+	appLauncher.SetStartupInjector(func(pid int) error {
+		results, err := hookManager.Inject(hook.InjectRequest{PID: pid})
+		if err != nil {
+			return err
+		}
+		for _, result := range results {
+			if result.Error != "" {
+				return fmt.Errorf("%s", result.Error)
+			}
+		}
+		// Hook DLL 完成首次 IAT 扫描后会发出命名事件，避免用固定休眠等待。
+		if waitErr := hook.WaitReady(pid, 2*time.Second); waitErr != nil {
+			slog.Warn("等待 Hook 就绪超时，继续恢复应用", "pid", pid, "error", waitErr)
+		}
+		return nil
+	})
 	sysProxyManager := sysproxy.NewManager(opts.DataDir)
 	appLauncher.SetFlowCounter(func(appName string, pid int, since time.Time) int {
 		count := 0

@@ -2,7 +2,10 @@ package api
 
 import (
 	"net/http"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"scanning/internal/blob"
@@ -38,19 +41,57 @@ func (s *Server) handleSearchFlows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	needle := strings.ToLower(query)
+	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
+	switch scope {
+	case "", "all":
+		scope = "all"
+	case "url", "request", "response", "body":
+	default:
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "scope 仅支持 url、request、response、body 或 all", nil)
+		return
+	}
 	flows := s.store.All()
+	matched := make([]bool, len(flows))
+	workers := runtime.NumCPU()
+	if workers > len(flows) {
+		workers = len(flows)
+	}
+	if workers > 8 {
+		workers = 8
+	}
+	if workers > 0 {
+		var cursor atomic.Int64
+		var wg sync.WaitGroup
+		wg.Add(workers)
+		for i := 0; i < workers; i++ {
+			go func() {
+				defer wg.Done()
+				for {
+					index := int(cursor.Add(1)) - 1
+					if index >= len(flows) || r.Context().Err() != nil {
+						return
+					}
+					if s.matchFlowKeyword(flows[index], needle, scope) {
+						matched[index] = true
+					}
+				}
+			}()
+		}
+		wg.Wait()
+	}
+	if r.Context().Err() != nil {
+		return
+	}
 	ids := make([]string, 0, 16)
 	truncated := false
-	for _, f := range flows {
-		if r.Context().Err() != nil {
-			return
+	for index, ok := range matched {
+		if !ok {
+			continue
 		}
-		if s.matchFlowKeyword(f, needle) {
-			ids = append(ids, f.ID)
-			if len(ids) >= maxSearchResults {
-				truncated = true
-				break
-			}
+		ids = append(ids, flows[index].ID)
+		if len(ids) >= maxSearchResults {
+			truncated = true
+			break
 		}
 	}
 
@@ -63,10 +104,28 @@ func (s *Server) handleSearchFlows(w http.ResponseWriter, r *http.Request) {
 	}, nil)
 }
 
-func (s *Server) matchFlowKeyword(f *flow.Flow, needle string) bool {
+func (s *Server) matchFlowKeyword(f *flow.Flow, needle, scope string) bool {
 	if f == nil {
 		return false
 	}
+	if scope == "url" {
+		for _, value := range []string{f.Host, f.Path, f.Method, f.URL()} {
+			if containsFold(value, needle) {
+				return true
+			}
+		}
+		return false
+	}
+	switch scope {
+	case "request":
+		return s.matchMessageBody(f, f.Request, "request", needle)
+	case "response":
+		return s.matchMessageBody(f, f.Response, "response", needle)
+	case "body":
+		return s.matchMessageBody(f, f.Request, "request", needle) ||
+			s.matchMessageBody(f, f.Response, "response", needle)
+	}
+
 	for _, value := range []string{f.Host, f.Path, f.Method, f.URL(), f.Note} {
 		if containsFold(value, needle) {
 			return true
@@ -77,20 +136,29 @@ func (s *Server) matchFlowKeyword(f *flow.Flow, needle string) bool {
 			return true
 		}
 	}
-	if s.matchMessageKeyword(f, f.Request, "request", needle) {
+	if s.matchMessageKeyword(f, f.Request, "request", needle, true) {
 		return true
 	}
-	return s.matchMessageKeyword(f, f.Response, "response", needle)
+	return s.matchMessageKeyword(f, f.Response, "response", needle, true)
 }
 
-func (s *Server) matchMessageKeyword(f *flow.Flow, message *flow.Message, direction, needle string) bool {
+func (s *Server) matchMessageKeyword(f *flow.Flow, message *flow.Message, direction, needle string, includeHeaders bool) bool {
 	if message == nil {
 		return false
 	}
-	for _, header := range message.Headers {
-		if containsFold(header.Name, needle) || containsFold(header.Value, needle) {
-			return true
+	if includeHeaders {
+		for _, header := range message.Headers {
+			if containsFold(header.Name, needle) || containsFold(header.Value, needle) {
+				return true
+			}
 		}
+	}
+	return s.matchMessageBody(f, message, direction, needle)
+}
+
+func (s *Server) matchMessageBody(f *flow.Flow, message *flow.Message, direction, needle string) bool {
+	if message == nil {
+		return false
 	}
 	body := message.Body
 	if body == nil {

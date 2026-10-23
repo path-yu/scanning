@@ -271,7 +271,7 @@ type ClientInfo struct {
 6. detour 过滤回环、未配置端口、代理自身地址与已绑定非回环地址；对本机代理发起连接并发送 `CONNECT ip:port`，等待 200；
 7. 代理对 443 Peek ClientHello 读取 SNI，签发叶证书并 MITM；对带 `X-Scanning-Hook: 1` 的 80 端口 CONNECT 升级为明文 HTTP 解析，从 Host 头还原域名；
 8. Flow 通过 TCP 表反查 PID，归因到目标进程，继续走规则/断点/重放；
-9. 对 `*.music.163.com` 的 `/eapi/` 流量，用 AES-128-ECB 解码请求 `params` 与响应体；正文预览、详情和下载均使用解密后的 JSON，原始密文仍可通过 `raw=1` 下载。
+9. 对 `*.music.163.com` 的 `/eapi/`、`/xeapi/` 流量，用 AES-128-ECB 解码响应体（`/eapi/` 请求额外解码 `params`）；正文预览、详情和下载均使用解密后的 JSON，原始密文仍可通过 `raw=1` 下载。
 
 网易云 EAPI 解码：
 

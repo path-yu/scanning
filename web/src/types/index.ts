@@ -405,6 +405,14 @@ export interface AppDiagnosis {
   message: string;
 }
 
+export interface LaunchInjection {
+  attempted: boolean;
+  injected: number;
+  failed: number;
+  message: string;
+  results?: HookProcess[];
+}
+
 export interface LaunchedApp {
   id: string;
   name: string;
@@ -419,6 +427,7 @@ export interface LaunchedApp {
   logPath?: string;
   error?: string;
   diagnosis?: AppDiagnosis;
+  injection?: LaunchInjection;
 }
 
 export interface RecentApp {

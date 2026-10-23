@@ -26,9 +26,9 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontSize: 15, fontWeight: 700 }}>{title}</DialogTitle>
+      <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>{title}</DialogTitle>
       <DialogContent>
-        <DialogContentText sx={{ fontSize: 12.5, color: 'text.secondary' }}>
+        <DialogContentText sx={{ fontSize: 13.5, color: 'text.secondary' }}>
           {description}
         </DialogContentText>
       </DialogContent>

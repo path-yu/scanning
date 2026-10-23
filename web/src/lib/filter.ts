@@ -2,6 +2,8 @@ import type { FlowSummary } from '@/types';
 
 export type FilterPredicate = (flow: FlowSummary) => boolean;
 
+export type SearchScope = 'url' | 'request' | 'response';
+
 export interface FilterResult {
   predicate: FilterPredicate;
   error?: string;
@@ -87,7 +89,8 @@ function compileTerm(term: string): FilterPredicate | string {
   return (flow) =>
     flow.host.toLowerCase().includes(needle) ||
     flow.path.toLowerCase().includes(needle) ||
-    flow.method.toLowerCase().includes(needle);
+    flow.method.toLowerCase().includes(needle) ||
+    urlOf(flow).toLowerCase().includes(needle);
 }
 
 function compileField(field: string, op: string, value: string): FilterPredicate | string {

@@ -25,7 +25,7 @@ export function StatusBar({ stats, wsStatus, info, proxyStatus, visible }: Statu
   return (
     <Box
       sx={{
-        height: 28,
+        height: 30,
         px: 1.5,
         display: 'flex',
         alignItems: 'center',
@@ -34,7 +34,7 @@ export function StatusBar({ stats, wsStatus, info, proxyStatus, visible }: Statu
         borderColor: 'divider',
         bgcolor: 'background.paper',
         color: 'text.secondary',
-        fontSize: 10.5,
+        fontSize: 11.5,
         flexShrink: 0,
         overflow: 'hidden',
         whiteSpace: 'nowrap',

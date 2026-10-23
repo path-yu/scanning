@@ -366,6 +366,40 @@ func (s *Server) handleDeleteFlows(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "批量删除需要 confirm=true", nil)
 		return
 	}
+
+	hasIDs := false
+	var ids []string
+	if raw := strings.TrimSpace(r.URL.Query().Get("ids")); raw != "" {
+		hasIDs = true
+		for _, part := range strings.Split(raw, ",") {
+			if id := strings.TrimSpace(part); id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "请求体无效: "+err.Error(), nil)
+		return
+	}
+	if req.IDs != nil {
+		hasIDs = true
+		ids = append(ids, req.IDs...)
+	}
+	if len(ids) > 5000 {
+		writeError(w, r, http.StatusBadRequest, "BAD_REQUEST", "一次最多删除 5000 条请求", nil)
+		return
+	}
+
+	if hasIDs {
+		count := s.store.Remove(ids)
+		s.hub.Broadcast("flows.deleted", map[string]any{"ids": ids, "count": count})
+		writeData(w, r, map[string]any{"count": count}, nil)
+		return
+	}
+
 	count := s.store.Clear()
 	s.hub.Broadcast("flows.cleared", map[string]any{"count": count})
 	writeData(w, r, map[string]any{"count": count}, nil)

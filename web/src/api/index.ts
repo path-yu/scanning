@@ -192,8 +192,12 @@ export const api = {
     return request<Flow>(`/flows/${encodeURIComponent(id)}`);
   },
 
-  searchFlows(q: string, signal?: AbortSignal): Promise<FlowSearchResult> {
-    const query = new URLSearchParams({ q });
+  searchFlows(
+    q: string,
+    scope: 'url' | 'request' | 'response' | 'body' | 'all' = 'all',
+    signal?: AbortSignal,
+  ): Promise<FlowSearchResult> {
+    const query = new URLSearchParams({ q, scope });
     return request<FlowSearchResult>(`/flows/search?${query.toString()}`, { signal });
   },
 
@@ -304,6 +308,13 @@ export const api = {
 
   clearFlows(): Promise<{ count: number }> {
     return request<{ count: number }>('/flows?confirm=true', { method: 'DELETE' });
+  },
+
+  deleteFlows(ids: string[]): Promise<{ count: number }> {
+    return request<{ count: number }>('/flows?confirm=true', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    });
   },
 
   getDomains(): Promise<DomainStat[]> {

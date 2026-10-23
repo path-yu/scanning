@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -130,6 +131,10 @@ func injectPID(pid int, dllPath string) (string, bool, error) {
 	}
 	if exitCode == 0 {
 		return path, false, fmt.Errorf("LoadLibraryW 返回 0：可能被安全软件拦截、DLL 路径不可访问或架构不匹配")
+	}
+	// 模块列表的更新可能略晚于 LoadLibraryW 返回，短暂重试避免误报注入失败。
+	for attempt := 0; attempt < 10 && !moduleLoaded(pid, dllName); attempt++ {
+		time.Sleep(50 * time.Millisecond)
 	}
 	if !moduleLoaded(pid, dllName) {
 		return path, false, fmt.Errorf("LoadLibrary 返回成功，但进程模块列表中未找到 %s", dllName)

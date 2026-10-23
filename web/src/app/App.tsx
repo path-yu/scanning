@@ -23,6 +23,7 @@ export default function App() {
 
   const setAll = useFlowStore((state) => state.setAll);
   const addFlows = useFlowStore((state) => state.add);
+  const removeFlows = useFlowStore((state) => state.remove);
   const setStats = useFlowStore((state) => state.setStats);
   const removeAll = useFlowStore((state) => state.removeAll);
 
@@ -40,7 +41,7 @@ export default function App() {
 
   const flowsQuery = useQuery({
     queryKey: ['flows', 'initial'],
-    queryFn: () => api.listFlows({ limit: 500, order: 'asc' }),
+    queryFn: () => api.listFlows({ limit: 500, order: 'desc' }),
   });
 
   const proxyQuery = useQuery({
@@ -67,10 +68,11 @@ export default function App() {
       onStats: setStats,
       onStatus: setWsStatus,
       onCleared: removeAll,
+      onDeleted: removeFlows,
       onCaptureStatus: (status) => queryClient.setQueryData(['capture-status'], status),
     });
     return close;
-  }, [addFlows, queryClient, removeAll, setStats]);
+  }, [addFlows, queryClient, removeAll, removeFlows, setStats]);
 
   useEffect(() => {
     localStorage.setItem(THEME_KEY, mode);
@@ -82,7 +84,7 @@ export default function App() {
     try {
       await api.demoFlows(12);
       if (wsStatus !== 'open') {
-        const data = await api.listFlows({ limit: 500, order: 'asc' });
+        const data = await api.listFlows({ limit: 500, order: 'desc' });
         setAll(data.flows);
       }
     } catch (error) {
@@ -99,17 +101,32 @@ export default function App() {
       removeAll();
       queryClient.setQueryData(['flows', 'initial'], {
         flows: [],
-        meta: { total: 0, hasMore: false, order: 'asc' },
+        meta: { total: 0, hasMore: false, order: 'desc' },
       });
     } catch (error) {
       setActionError(errorMessage(error));
     }
   }, [queryClient, removeAll]);
 
+  const handleDeleteFlows = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      setActionError(null);
+      try {
+        await api.deleteFlows(ids);
+        removeFlows(ids);
+      } catch (error) {
+        setActionError(errorMessage(error));
+        throw error;
+      }
+    },
+    [removeFlows],
+  );
+
   const handleRefresh = useCallback(async () => {
     setActionError(null);
     try {
-      const data = await api.listFlows({ limit: 500, order: 'asc' });
+      const data = await api.listFlows({ limit: 500, order: 'desc' });
       setAll(data.flows);
     } catch (error) {
       setActionError(errorMessage(error));
@@ -160,6 +177,7 @@ export default function App() {
         onDemo={handleDemo}
         demoBusy={demoBusy}
         onClear={handleClear}
+        onDeleteFlows={handleDeleteFlows}
         onRefresh={handleRefresh}
         refreshing={flowsQuery.isFetching}
         onExportHar={handleExportHar}

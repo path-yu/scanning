@@ -44,6 +44,52 @@ func TestRingAddGetPatch(t *testing.T) {
 	}
 }
 
+func TestRingRemoveKeepsOrderAndStats(t *testing.T) {
+	r := NewRing(10, "s1")
+	added := make([]*flow.Flow, 0, 4)
+	for i := 0; i < 4; i++ {
+		added = append(added, r.Add(makeFlow(fmt.Sprintf("h%d", i))))
+	}
+
+	removed := r.Remove([]string{added[1].ID, added[3].ID})
+	if removed != 2 {
+		t.Fatalf("removed = %d, want 2", removed)
+	}
+	if _, ok := r.Get(added[1].ID); ok {
+		t.Fatal("deleted flow still exists")
+	}
+	items, _, total := r.List(nil, 0, 10, false)
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("total=%d len=%d, want 2", total, len(items))
+	}
+	if items[0].ID != added[0].ID || items[1].ID != added[2].ID {
+		t.Fatalf("unexpected remaining order: %s, %s", items[0].ID, items[1].ID)
+	}
+	if items[0].Seq != 1 || items[1].Seq != 3 {
+		t.Fatalf("seq mutated: %d, %d", items[0].Seq, items[1].Seq)
+	}
+	if stats := r.Stats(); stats.Count != 2 || stats.Bytes != 60 {
+		t.Fatalf("stats = %+v, want count=2 bytes=60", stats)
+	}
+	if next := r.Add(makeFlow("h5")); next.Seq != 5 {
+		t.Fatalf("next seq = %d, want 5", next.Seq)
+	}
+
+	// 删除不应清零累计淘汰统计。
+	r2 := NewRing(2, "s1")
+	r2.Add(makeFlow("a"))
+	r2.Add(makeFlow("b"))
+	r2.Add(makeFlow("c")) // 淘汰 a，evicted=1
+	items, _, _ = r2.List(nil, 0, 10, false)
+	r2.Remove([]string{items[0].ID})
+	if stats := r2.Stats(); stats.Evicted != 1 {
+		t.Fatalf("evicted = %d, want 1", stats.Evicted)
+	}
+	if next := r2.Add(makeFlow("d")); next.Seq != 4 {
+		t.Fatalf("next seq after remove = %d, want 4", next.Seq)
+	}
+}
+
 func TestRingListOrderAndCursor(t *testing.T) {
 	r := NewRing(10, "s1")
 	for i := 0; i < 5; i++ {

@@ -82,6 +82,7 @@ static BOOL g_proxy_is_v6 = FALSE;
 static WCHAR g_log_path[MAX_PATH];
 static LONG g_log_lines = 0;
 static DWORD g_pid = 0;
+static HANDLE g_ready_event = NULL;
 static LONG g_redirect_count = 0;
 static LONG g_connect_calls = 0;
 
@@ -938,7 +939,17 @@ static DWORD WINAPI BackgroundThread(LPVOID param) {
             (unsigned long)g_pid, proxyA, g_port_count, (void *)g_real_connect,
             (void *)g_real_wsaioc, (void *)g_real_connectex);
 
+    /* 首次 IAT 扫描完成后通知注入器，替代固定时长休眠。 */
+    WCHAR ready_name[64] = {0};
+    _snwprintf(ready_name, 63, L"Local\\ScanningHookReady_%lu", (unsigned long)g_pid);
+    g_ready_event = CreateEventW(NULL, TRUE, FALSE, ready_name);
+
     ScanModules();
+    if (g_ready_event != NULL) {
+        SetEvent(g_ready_event);
+        HookLog("hook ready signalled pid=%lu", (unsigned long)g_pid);
+    }
+
     for (int i = 0; i < 10; i++) {
         Sleep(200);
         ScanModules();

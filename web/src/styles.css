@@ -1,0 +1,22 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  isolation: isolate;
+}
+
+.mono {
+  font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-variant-ligatures: none;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.28);
+}

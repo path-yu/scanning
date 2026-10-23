@@ -1,0 +1,16 @@
+bin/
+.tmp/
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# 测试覆盖率与本地构建缓存
+coverage.out
+web/.vite/

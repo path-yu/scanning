@@ -117,6 +117,52 @@ func TestLaunchRejectsEmptyProxy(t *testing.T) {
 	}
 }
 
+func TestRecentExitStatus(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+	ended := time.Now()
+	app := &App{
+		Name:     "demo.exe",
+		Path:     `C:\demo\demo.exe`,
+		PID:      1234,
+		Status:   StatusExited,
+		ExitCode: 7,
+		EndedAt:  &ended,
+	}
+	m.mu.Lock()
+	m.upsertRecentLocked(app, time.Now())
+	m.updateRecentStatusLocked(app)
+	m.mu.Unlock()
+
+	recent := m.Recent()
+	if len(recent) != 1 {
+		t.Fatalf("recent = %+v", recent)
+	}
+	if recent[0].PID != 1234 || recent[0].Status != StatusExited || recent[0].ExitCode != 7 {
+		t.Fatalf("recent status = %+v", recent[0])
+	}
+	if recent[0].EndedAt == nil {
+		t.Fatal("缺少结束时间")
+	}
+
+	reloaded := NewManager(dir).Recent()
+	if len(reloaded) != 1 || reloaded[0].Status != StatusExited || reloaded[0].ExitCode != 7 {
+		t.Fatalf("持久化后的状态 = %+v", reloaded)
+	}
+}
+
+func TestExitDiagnosis(t *testing.T) {
+	diag := exitDiagnosis(&App{Status: StatusExited, ExitCode: 2}, time.Now())
+	if diag.Status != "exited" || !strings.Contains(diag.Message, "退出码 2") {
+		t.Fatalf("exit diagnosis = %+v", diag)
+	}
+
+	diag = exitDiagnosis(&App{Status: StatusFailed, Error: "boom"}, time.Now())
+	if diag.Status != "exited" || !strings.Contains(diag.Message, "启动失败") || !strings.Contains(diag.Message, "boom") {
+		t.Fatalf("failed diagnosis = %+v", diag)
+	}
+}
+
 func TestBuildDiagnosis(t *testing.T) {
 	proxy := "127.0.0.1:8899"
 	diag := buildDiagnosis(3, 0, nil, proxy)

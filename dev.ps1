@@ -3,6 +3,7 @@ param(
     [switch]$NoBrowser,
     [switch]$SkipInstall,
     [switch]$BuildHook,
+    [switch]$Restart,
     [string]$ApiAddr = '127.0.0.1:8898',
     [int]$WebPort = 5173,
     [string]$DataDir = ''
@@ -21,6 +22,7 @@ function Write-Warn([string]$Message) {
 }
 
 function Show-LogTail([string]$Path, [string]$Label, [int]$Lines = 20) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return }
     if (-not (Test-Path -LiteralPath $Path)) { return }
     Write-Host "----- $Label（最后 $Lines 行）-----" -ForegroundColor DarkGray
     try {
@@ -49,7 +51,39 @@ function Assert-PortFree([string]$Addr, [string]$Label) {
     if ($listener) {
         $owner = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
         $name = if ($owner) { $owner.ProcessName } else { '未知进程' }
-        throw "$Label 端口 $port 已被 $name（PID $($listener.OwningProcess)）占用。请先停止它，或用 -ApiAddr / -WebPort 指定其他端口。"
+        throw "$Label 端口 $port 已被 $name（PID $($listener.OwningProcess)）占用。请先停止它，或用 -ApiAddr / -WebPort 指定其他端口；如果这是本项目的开发实例，可使用 -Restart 重启。"
+    }
+}
+
+function Stop-ExistingDev([string]$Addr, [int]$Port) {
+    $apiParts = $Addr.Split(':')
+    $apiPort = 0
+    if ($apiParts.Length -ge 2) {
+        [void][int]::TryParse($apiParts[$apiParts.Length - 1], [ref]$apiPort)
+    }
+    $ports = @($apiPort, $Port) | Where-Object { $_ -gt 0 } | Select-Object -Unique
+    $viteEntry = Join-Path $root 'web/node_modules/vite/bin/vite.js'
+    $stopped = 0
+
+    foreach ($listenPort in $ports) {
+        $listeners = Get-NetTCPConnection -State Listen -LocalPort $listenPort -ErrorAction SilentlyContinue
+        foreach ($listener in $listeners) {
+            $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
+            if (-not $proc) { continue }
+            $name = $proc.Name
+            $cmd = $proc.CommandLine
+            $isBackend = $name -eq 'scanning-dev.exe'
+            $isVite = $name -eq 'node.exe' -and -not [string]::IsNullOrWhiteSpace($cmd) -and
+                $cmd.IndexOf($viteEntry, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            if (-not ($isBackend -or $isVite)) { continue }
+            Write-Step "停止已有开发进程：$name (PID $($proc.ProcessId))"
+            & taskkill /PID $proc.ProcessId /T /F 2>$null | Out-Null
+            $stopped++
+        }
+    }
+    if ($stopped -gt 0) {
+        Start-Sleep -Milliseconds 600
+        Write-Step "已停止 $stopped 个已有开发进程"
     }
 }
 
@@ -97,22 +131,32 @@ try {
         }
     }
 
-    $hookDll = Join-Path $root 'bin/hook/scanning_hook_x64.dll'
+    $hookDir = Join-Path $root 'bin/hook'
+    $hookX64 = Join-Path $hookDir 'scanning_hook_x64.dll'
+    $hookX86 = Join-Path $hookDir 'scanning_hook_x86.dll'
+    $missingHook = -not (Test-Path -LiteralPath $hookX64) -or -not (Test-Path -LiteralPath $hookX86)
     $zig = Get-Command 'zig' -ErrorAction SilentlyContinue
-    if ($BuildHook -or -not (Test-Path -LiteralPath $hookDll)) {
+    if ($BuildHook -or $missingHook) {
         if ($zig) {
-            Write-Step '编译进程注入 Hook DLL ...'
-            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $hookDll) | Out-Null
-            & $zig.Source cc -target x86_64-windows-gnu -shared -O2 -o $hookDll internal/hook/native/scanning_hook.c -lws2_32
-            if ($LASTEXITCODE -ne 0) {
-                if ($BuildHook) { throw 'Hook DLL 编译失败。' }
-                Write-Warn 'Hook DLL 编译失败；进程注入功能不可用。'
+            Write-Step '编译 x64/x86 Hook DLL ...'
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            & $zig.Source cc -target x86_64-windows-gnu -shared -O2 -o $hookX64 internal/hook/native/scanning_hook.c -lws2_32
+            $x64OK = $LASTEXITCODE -eq 0
+            & $zig.Source cc -target x86-windows-gnu -shared -O2 -o $hookX86 internal/hook/native/scanning_hook.c -lws2_32
+            $x86OK = $LASTEXITCODE -eq 0
+            if (-not $x64OK -or -not $x86OK) {
+                if ($BuildHook) { throw 'Hook DLL 编译失败（x64 或 x86）。' }
+                Write-Warn 'Hook DLL 编译失败；对应架构的进程注入功能不可用。'
             }
         } elseif ($BuildHook) {
             throw '未找到 zig，无法编译 Hook DLL。请安装 Zig 并加入 PATH。'
         } else {
-            Write-Warn '未找到 Hook DLL，且未找到 zig；进程注入功能不可用，其他功能不受影响。'
+            Write-Warn 'Hook DLL 不完整，且未找到 zig；进程注入功能可能不可用。'
         }
+    }
+
+    if ($Restart) {
+        Stop-ExistingDev $ApiAddr $WebPort
     }
 
     Assert-PortFree $ApiAddr 'API'

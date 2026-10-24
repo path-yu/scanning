@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"scanning/internal/flow"
 )
 
 func (e *Engine) handleConnect(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +35,13 @@ func (e *Engine) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// 这里把 80 端口的隧道升级为明文 HTTP 解析，域名由请求的 Host 头还原。
 	if hookOrigin && port == "80" {
 		e.serveHookHTTP(w)
+		return
+	}
+	// Hook 接管的其他端口（如游戏/长连接端口）通常不是 HTTP；直接建立原始
+	// TCP 隧道，避免 TLS MITM 或 HTTP 解析破坏应用协议。这类连接无法解析
+	// 内容，但仍记录一条 Flow，便于在界面看到目标、进程与双向字节数。
+	if hookOrigin && port != "443" {
+		e.tunnelRaw(w, r, host, port, target)
 		return
 	}
 	if e.certs == nil {
@@ -181,6 +190,84 @@ func (e *Engine) tunnelConn(client net.Conn, target string) {
 	copyBidirectional(client, upstream)
 }
 
+// tunnelRaw 为注入 Hook 接管的非 HTTP 端口建立原始 TCP 隧道。这类连接
+// （如 RDP、游戏私有协议）无法解析内容，但仍记录 Flow，便于在界面看到
+// 连接目标、所属进程与双向字节数。
+func (e *Engine) tunnelRaw(w http.ResponseWriter, r *http.Request, host, port, target string) {
+	e.active.Add(1)
+	defer e.active.Add(-1)
+
+	started := time.Now()
+	clientIP, clientPort := splitRemote(r.RemoteAddr)
+	portNum := parsePort(port, 0)
+	f := &flow.Flow{
+		Mode:      flow.ModeProxy,
+		State:     flow.StateActive,
+		Scheme:    "tcp",
+		Host:      host,
+		Port:      portNum,
+		Method:    "CONNECT",
+		Client:    e.clientFlowInfo(clientIP, clientPort),
+		Server:    flow.ServerInfo{Name: host, Port: portNum},
+		Tags:      []string{"raw-tunnel"},
+		StartedAt: started,
+	}
+	f = e.store.Add(f)
+	e.hub.Broadcast("flow.created", f.Summary())
+
+	fail := func(err error) {
+		completed := time.Now()
+		f.State = flow.StateFailed
+		f.CompletedAt = &completed
+		f.DurationMs = completed.Sub(started).Milliseconds()
+		f.Error = &flow.FlowError{Stage: "connect", Code: "raw_tunnel_failed", Message: err.Error()}
+		e.syncFlow(f, "flow.updated")
+	}
+
+	upstream, err := e.dialTarget(target)
+	if err != nil {
+		fail(err)
+		http.Error(w, "无法连接上游: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer upstream.Close()
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		fail(fmt.Errorf("当前 ResponseWriter 不支持连接接管"))
+		http.Error(w, "当前 ResponseWriter 不支持连接接管", http.StatusInternalServerError)
+		return
+	}
+	raw, rw, err := hijacker.Hijack()
+	if err != nil {
+		fail(err)
+		return
+	}
+	e.conns.Add(raw)
+	defer func() {
+		e.conns.Remove(raw)
+		_ = raw.Close()
+	}()
+
+	if _, err := rw.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		fail(err)
+		return
+	}
+	if err := rw.Flush(); err != nil {
+		fail(err)
+		return
+	}
+
+	requestBytes, responseBytes := copyBidirectional(raw, upstream)
+	completed := time.Now()
+	f.State = flow.StateCompleted
+	f.CompletedAt = &completed
+	f.DurationMs = completed.Sub(started).Milliseconds()
+	f.ReqSize = requestBytes
+	f.RespSize = responseBytes
+	e.syncFlow(f, "flow.updated")
+}
+
 // dialTarget 直接连接目标；配置了上游代理时通过 HTTP/HTTPS 代理建立 CONNECT 隧道。
 func (e *Engine) dialTarget(target string) (net.Conn, error) {
 	if e.upstreamURL == nil {
@@ -248,7 +335,7 @@ func (e *Engine) dialViaUpstream(target string) (net.Conn, error) {
 	return &bufferedConn{Conn: conn, r: reader}, nil
 }
 
-func copyBidirectional(a, b net.Conn) {
+func copyBidirectional(a, b net.Conn) (int64, int64) {
 	var once sync.Once
 	closeBoth := func() {
 		once.Do(func() {
@@ -257,17 +344,20 @@ func copyBidirectional(a, b net.Conn) {
 		})
 	}
 
+	// request 为客户端发往上游的字节，response 为上游返回客户端的字节。
+	var request, response int64
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(a, b)
+		response, _ = io.Copy(a, b)
 		closeBoth()
 	}()
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(b, a)
+		request, _ = io.Copy(b, a)
 		closeBoth()
 	}()
 	wg.Wait()
+	return request, response
 }

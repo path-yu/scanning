@@ -9,6 +9,7 @@ import (
 
 	"scanning/internal/hook"
 	"scanning/internal/launcher"
+	"scanning/internal/procinfo"
 )
 
 type launchInjection struct {
@@ -86,7 +87,7 @@ func (s *Server) handleLaunchApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := launchAppResponse{App: app}
-	if s.hook != nil {
+	if s.hook != nil && !req.SkipInject {
 		response.Injection = s.autoInjectLaunchedApp(app.PID, app.Name)
 	}
 	writeData(w, r, response, nil)
@@ -129,7 +130,7 @@ func (s *Server) autoInjectLaunchedApp(pid int, name string) *launchInjection {
 		injection.Message = "主进程未找到，后台继续尝试同名进程"
 	}
 	if name != "" {
-		go s.injectSameNameLater(name)
+		go s.injectSameNameLater(pid, name, time.Now())
 	}
 	return injection
 }
@@ -137,20 +138,39 @@ func (s *Server) autoInjectLaunchedApp(pid int, name string) *launchInjection {
 const childInjectDelay = 600 * time.Millisecond
 
 // injectSameNameLater 在启动响应返回后补注入同名子进程，不占用请求处理 goroutine。
-func (s *Server) injectSameNameLater(name string) {
+// 只处理本次启动的进程和启动后创建的同名子进程，避免把旧实例也注入一遍。
+func (s *Server) injectSameNameLater(launchedPID int, name string, started time.Time) {
 	time.Sleep(childInjectDelay)
-	results, err := s.hook.Inject(hook.InjectRequest{Name: name, All: true})
-	if err != nil {
-		slog.Warn("后台补注入 Hook 失败", "app", name, "error", err)
+	procs := s.hook.ListProcesses(name)
+	cutoff := started.Add(-5 * time.Second)
+	targets := make([]hook.Process, 0, len(procs))
+	for _, proc := range procs {
+		if proc.PID == launchedPID {
+			targets = append(targets, proc)
+			continue
+		}
+		if created, ok := procinfo.ProcessStartTime(proc.PID); ok && !created.Before(cutoff) {
+			targets = append(targets, proc)
+		}
+	}
+	if len(targets) == 0 {
 		return
 	}
+
 	injected := 0
 	failed := 0
-	for _, result := range results {
-		if result.Error != "" {
+	for _, target := range targets {
+		results, err := s.hook.Inject(hook.InjectRequest{PID: target.PID})
+		if err != nil {
 			failed++
-		} else {
-			injected++
+			continue
+		}
+		for _, result := range results {
+			if result.Error != "" {
+				failed++
+			} else {
+				injected++
+			}
 		}
 	}
 	slog.Info("后台补注入 Hook 完成", "app", name, "injected", injected, "failed", failed)

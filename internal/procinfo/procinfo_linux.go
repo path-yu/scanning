@@ -34,6 +34,54 @@ func lookupProcess(clientIP string, clientPort, proxyPort int) (Info, bool) {
 	return info, true
 }
 
+func processStartTime(pid int) (time.Time, bool) {
+	if pid <= 0 {
+		return time.Time{}, false
+	}
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return time.Time{}, false
+	}
+	text := string(raw)
+	closeIdx := strings.LastIndex(text, ")")
+	if closeIdx < 0 || closeIdx+2 >= len(text) {
+		return time.Time{}, false
+	}
+	fields := strings.Fields(text[closeIdx+2:])
+	// 字段从 state（第 3 项）开始，starttime 是第 22 项，即 fields[19]。
+	if len(fields) <= 19 {
+		return time.Time{}, false
+	}
+	ticks, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	boot, ok := linuxBootTime()
+	if !ok {
+		return time.Time{}, false
+	}
+	const clockTicks = 100 // 常见 Linux USER_HZ
+	return boot.Add(time.Duration(ticks) * time.Second / clockTicks), true
+}
+
+func linuxBootTime() (time.Time, bool) {
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return time.Time{}, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "btime ") {
+			continue
+		}
+		seconds, err := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(line, "btime ")), 10, 64)
+		if err != nil {
+			return time.Time{}, false
+		}
+		return time.Unix(seconds, 0), true
+	}
+	return time.Time{}, false
+}
+
 func processIDsByPath(path string) []int {
 	target := filepath.Clean(strings.TrimSpace(path))
 	if target == "" {

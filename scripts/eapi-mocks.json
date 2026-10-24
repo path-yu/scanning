@@ -1,0 +1,699 @@
+{
+  "__comment": "本地 EAPI mock 配置。普通键为请求路径（支持 * 通配），值为返回的 JSON；__default 为未匹配时的兜底响应。示例数据已脱敏，可自行替换。",
+  "__default": {
+    "code": 200,
+    "data": {},
+    "message": ""
+  },
+  "/eapi/song/red/count": {
+    "code": 200,
+    "data": {
+      "count": 22016520,
+      "countDesc": "100w+"
+    }
+  },
+  "/eapi/djradio/get/create/sub/count": {
+    "createRadioCount": 1,
+    "subRadioCount": 3,
+    "code": 200
+  },
+  "/eapi/user/playlist/getTop": {
+    "data": {
+      "topItemList": []
+    },
+    "code": 200
+  },
+  "/eapi/pc/popup/copyright": {
+    "code": 200,
+    "data": {
+      "userId": 0,
+      "songNum": 0,
+      "songList": null,
+      "songIdList": null,
+      "ruleText": null,
+      "simpleSongDataList": null,
+      "returnSongPlaylistId": null,
+      "playlistStatus": 0
+    },
+    "message": ""
+  },
+  "/eapi/search/pc/suggest/keyword/get": {
+    "code": 200,
+    "data": {
+      "recTitle": "相关搜索",
+      "suggests": [],
+      "recs": [],
+      "demote": false
+    },
+    "message": ""
+  },
+  "/eapi/search/pc/rcmd/keyword/get": {
+    "code": 200,
+    "message": null,
+    "data": {
+      "algWords": [
+        {
+          "keyword": "Taylor Swift",
+          "toUserWord": "Taylor Swift",
+          "highlight": null,
+          "alg": "",
+          "bizQueryInfo": "",
+          "logInfo": null
+        },
+        {
+          "keyword": "Taylor Swift - Love Story",
+          "toUserWord": "Taylor Swift - Love Story",
+          "highlight": null,
+          "alg": "",
+          "bizQueryInfo": "",
+          "logInfo": null
+        },
+        {
+          "keyword": "封茗囧菌",
+          "toUserWord": "封茗囧菌",
+          "highlight": null,
+          "alg": "",
+          "bizQueryInfo": "",
+          "logInfo": null
+        },
+        {
+          "keyword": "银临",
+          "toUserWord": "银临",
+          "highlight": null,
+          "alg": "",
+          "bizQueryInfo": "",
+          "logInfo": null
+        }
+      ],
+      "operateWords": {},
+      "newStyle": true
+    }
+  },
+  "/eapi/pl/count": {
+    "code": 200,
+    "notice": 0,
+    "follow": 0,
+    "forward": 0,
+    "msg": 0,
+    "comment": 0,
+    "sceneComments": {
+      "musician_comments": 0,
+      "social_comments": 0
+    },
+    "totalComment": 0,
+    "pushMsg": "",
+    "lastPrivateMsg": null,
+    "friend": {
+      "snsCount": 0,
+      "count": 0,
+      "celebrityCount": 0
+    },
+    "event": 0,
+    "newProgramCount": 0,
+    "createDJRadioCount": 0,
+    "newTheme": false,
+    "battle": {
+      "showQuizIcon": false,
+      "startTime": 0,
+      "endTime": 0,
+      "nonStartIcon": null,
+      "startIcon": null
+    },
+    "ydAntiUrlConfigVersion": 1,
+    "invitationVersion": 0
+  },
+  "/eapi/resource/commentInfo/list": {
+    "data": [
+      {
+        "latestLikedUsers": null,
+        "liked": false,
+        "comments": null,
+        "resourceType": 4,
+        "resourceId": 1495058484,
+        "commentUpgraded": false,
+        "musicianSaidCount": 0,
+        "commentCountDesc": "20w+",
+        "likedCount": 0,
+        "shareCount": 137798,
+        "commentCount": 220507,
+        "threadId": "R_SO_4_1495058484"
+      }
+    ],
+    "code": 200
+  },
+  "/eapi/album/sublist": {
+    "data": [
+      {
+        "subTime": 1746757936464,
+        "msg": [],
+        "artists": [
+          {
+            "img1v1Id": 0,
+            "topicPerson": 0,
+            "picId": 0,
+            "briefDesc": "",
+            "musicSize": 0,
+            "albumSize": 0,
+            "picUrl": "",
+            "img1v1Url": "",
+            "followed": false,
+            "trans": "",
+            "alias": [],
+            "name": "Taylor Swift",
+            "id": 44266,
+            "img1v1Id_str": "0"
+          }
+        ],
+        "picId": 109951168971655174,
+        "picUrl": "https://p4.music.126.net/b_6ZbpOz55g8oB4KR34aFw==/109951168971655174.jpg",
+        "alias": [],
+        "name": "folklore (deluxe version)",
+        "id": 92895788,
+        "size": 17,
+        "transNames": []
+      }
+    ],
+    "count": 1,
+    "hasMore": false,
+    "cover": "https://p3.music.126.net/_VjuIgInJqwxdyoy4FF3IA==/18357446138140955.jpg",
+    "paidCount": 0,
+    "code": 200
+  },
+  "/eapi/v3/song/detail": {
+    "songs": [
+      {
+        "name": "影子小姐",
+        "mainTitle": null,
+        "additionalTitle": null,
+        "id": 1297333740,
+        "pst": 0,
+        "t": 0,
+        "ar": [
+          {
+            "id": 12172529,
+            "name": "封茗囧菌",
+            "tns": [],
+            "alias": []
+          }
+        ],
+        "alia": [],
+        "pop": 100.0,
+        "st": 0,
+        "rt": null,
+        "fee": 1,
+        "v": 50,
+        "crbt": null,
+        "cf": "",
+        "al": {
+          "id": 72021412,
+          "name": "影子小姐",
+          "picUrl": "https://p3.music.126.net/7NdJra1fG8dRq5YfiUrXVw==/109951163431816328.jpg",
+          "tns": [],
+          "pic_str": "109951163431816328",
+          "pic": 109951163431816328
+        },
+        "dt": 250224,
+        "h": {
+          "br": 320000,
+          "fid": 0,
+          "size": 10009965,
+          "vd": -52187.0,
+          "sr": 48000
+        },
+        "m": {
+          "br": 192000,
+          "fid": 0,
+          "size": 6005997,
+          "vd": -49635.0,
+          "sr": 48000
+        },
+        "l": {
+          "br": 128000,
+          "fid": 0,
+          "size": 4004013,
+          "vd": -47974.0,
+          "sr": 48000
+        },
+        "sq": null,
+        "hr": null,
+        "a": null,
+        "cd": "01",
+        "no": 1,
+        "rtUrl": null,
+        "ftype": 0,
+        "rtUrls": [],
+        "djId": 0,
+        "copyright": 0,
+        "s_id": 0,
+        "mark": 17179877376,
+        "originCoverType": 1,
+        "originSongSimpleData": null,
+        "tagPicList": null,
+        "resourceState": true,
+        "version": 16,
+        "songJumpInfo": null,
+        "entertainmentTags": null,
+        "awardTags": null,
+        "displayTags": null,
+        "artistClassics": false,
+        "markTags": [],
+        "songFeature": null,
+        "single": 0,
+        "noCopyrightRcmd": null,
+        "mv": 0,
+        "rtype": 0,
+        "rurl": null,
+        "mst": 9,
+        "cp": 0,
+        "publishTime": 1532836800000
+      }
+    ],
+    "privileges": [
+      {
+        "id": 1297333740,
+        "fee": 1,
+        "payed": 1,
+        "st": 0,
+        "pl": 320000,
+        "dl": 320000,
+        "sp": 7,
+        "cp": 1,
+        "subp": 1,
+        "cs": false,
+        "maxbr": 320000,
+        "fl": 0,
+        "toast": false,
+        "flag": 3440644,
+        "preSell": false,
+        "playMaxbr": 320000,
+        "downloadMaxbr": 320000,
+        "maxBrLevel": "vivid",
+        "playMaxBrLevel": "vivid",
+        "downloadMaxBrLevel": "vivid",
+        "plLevel": "exhigh",
+        "dlLevel": "exhigh",
+        "flLevel": "none",
+        "rscl": null,
+        "freeTrialPrivilege": {
+          "resConsumable": false,
+          "userConsumable": false,
+          "listenType": null,
+          "cannotListenReason": null,
+          "playReason": null,
+          "freeLimitTagType": null
+        },
+        "rightSource": 0,
+        "chargeInfoList": [
+          {
+            "rate": 128000,
+            "chargeUrl": null,
+            "chargeMessage": null,
+            "chargeType": 1
+          },
+          {
+            "rate": 192000,
+            "chargeUrl": null,
+            "chargeMessage": null,
+            "chargeType": 1
+          },
+          {
+            "rate": 320000,
+            "chargeUrl": null,
+            "chargeMessage": null,
+            "chargeType": 1
+          },
+          {
+            "rate": 999000,
+            "chargeUrl": null,
+            "chargeMessage": null,
+            "chargeType": 1
+          }
+        ],
+        "code": 0,
+        "message": null,
+        "plLevels": null,
+        "dlLevels": null,
+        "ignoreCache": null,
+        "bd": null
+      }
+    ],
+    "code": 200
+  },
+  "/eapi/song/enhance/player/url/v1": {
+    "data": [
+      {
+        "id": 1495058484,
+        "url": "",
+        "br": 256010,
+        "size": 7315937,
+        "md5": "",
+        "code": 200,
+        "expi": 3600,
+        "type": "m4a",
+        "fee": 1,
+        "payed": 1,
+        "flag": 3641348,
+        "canExtend": false,
+        "level": "exhigh",
+        "encodeType": "aac",
+        "freeTrialPrivilege": {
+          "resConsumable": false,
+          "userConsumable": false,
+          "listenType": null,
+          "cannotListenReason": null,
+          "playReason": null,
+          "freeLimitTagType": null
+        },
+        "urlSource": 0,
+        "rightSource": 0,
+        "time": 227213,
+        "sr": 48000,
+        "beatType": 0
+      }
+    ],
+    "code": 200
+  },
+  "/eapi/search/pc/result/tab": {
+    "code": 200,
+    "data": {
+      "algTabs": [
+        {
+          "code": 1018,
+          "title": "综合",
+          "url": "orpheus://nm/search/synthesizeResult",
+          "urlType": "native",
+          "oid": "auto_complex"
+        },
+        {
+          "code": 1019,
+          "title": "单曲",
+          "url": "orpheus://nm/search/songResult",
+          "urlType": "native",
+          "oid": "auto_song"
+        },
+        {
+          "code": 1000,
+          "title": "歌单",
+          "url": "orpheus://nm/search/resultPage?searchType=1000",
+          "urlType": "native",
+          "oid": "auto_playlist"
+        },
+        {
+          "code": 10,
+          "title": "专辑",
+          "url": "orpheus://nm/search/resultPage?searchType=10",
+          "urlType": "native",
+          "oid": "auto_album"
+        },
+        {
+          "code": 100,
+          "title": "歌手",
+          "url": "orpheus://nm/search/resultPage?searchType=100",
+          "urlType": "native",
+          "oid": "auto_artist"
+        },
+        {
+          "code": 1002,
+          "title": "用户",
+          "url": "orpheus://nm/search/resultPage?searchType=1002",
+          "urlType": "native",
+          "oid": "auto_user"
+        }
+      ],
+      "defaultTabs": [
+        {
+          "code": 1018,
+          "title": "综合",
+          "url": "orpheus://nm/search/synthesizeResult",
+          "urlType": "native",
+          "oid": "auto_complex"
+        },
+        {
+          "code": 1019,
+          "title": "单曲",
+          "url": "orpheus://nm/search/songResult",
+          "urlType": "native",
+          "oid": "auto_song"
+        },
+        {
+          "code": 1000,
+          "title": "歌单",
+          "url": "orpheus://nm/search/resultPage?searchType=1000",
+          "urlType": "native",
+          "oid": "auto_playlist"
+        },
+        {
+          "code": 10,
+          "title": "专辑",
+          "url": "orpheus://nm/search/resultPage?searchType=10",
+          "urlType": "native",
+          "oid": "auto_album"
+        },
+        {
+          "code": 100,
+          "title": "歌手",
+          "url": "orpheus://nm/search/resultPage?searchType=100",
+          "urlType": "native",
+          "oid": "auto_artist"
+        },
+        {
+          "code": 1002,
+          "title": "用户",
+          "url": "orpheus://nm/search/resultPage?searchType=1002",
+          "urlType": "native",
+          "oid": "auto_user"
+        }
+      ]
+    },
+    "message": ""
+  },
+  "/eapi/music-vip-membership/client/vip/info": {
+    "message": "成功",
+    "data": {
+      "relationType": 0,
+      "relationOtherUserId": 0,
+      "redVipLevel": 0,
+      "musicPackage": {
+        "vipCode": 220,
+        "expireTime": 0,
+        "iconUrl": null,
+        "dynamicIconUrl": null,
+        "vipLevel": 0,
+        "isSign": false,
+        "isSignIap": false,
+        "isSignDeduct": false,
+        "isSignIapDeduct": false
+      },
+      "oldCacheProtocol": false,
+      "relationOtherUserRedVipExpireTime": 0,
+      "userId": 0,
+      "voiceBookVip": {
+        "vipCode": 500,
+        "expireTime": 0,
+        "iconUrl": null,
+        "dynamicIconUrl": null,
+        "vipLevel": 0,
+        "isSign": false,
+        "isSignIap": false,
+        "isSignDeduct": false,
+        "isSignIapDeduct": false
+      },
+      "now": 0,
+      "redVipAnnualCount": -1,
+      "associator": {
+        "vipCode": 100,
+        "expireTime": 0,
+        "iconUrl": null,
+        "dynamicIconUrl": null,
+        "vipLevel": 0,
+        "isSign": false,
+        "isSignIap": false,
+        "isSignDeduct": false,
+        "isSignIapDeduct": false
+      },
+      "redplus": {
+        "vipCode": 300,
+        "expireTime": 0,
+        "iconUrl": null,
+        "dynamicIconUrl": null,
+        "vipLevel": 0,
+        "isSign": false,
+        "isSignIap": false,
+        "isSignDeduct": false,
+        "isSignIapDeduct": false
+      },
+      "albumVip": {
+        "vipCode": 400,
+        "expireTime": 0,
+        "iconUrl": null,
+        "dynamicIconUrl": null,
+        "vipLevel": 0,
+        "isSign": false,
+        "isSignIap": false,
+        "isSignDeduct": false,
+        "isSignIapDeduct": false
+      }
+    },
+    "code": 200
+  },
+  "/eapi/user/setting": {
+    "setting": {
+      "profileSetting": 1,
+      "ageSetting": 1,
+      "areaSetting": 1,
+      "collegeSetting": 1,
+      "villageAgeSetting": 0,
+      "followSingerSetting": 0,
+      "personalServiceSetting": 0,
+      "newSongDiskSetting": null,
+      "topLayerNotifySetting": 0,
+      "concertSetting": 0,
+      "phoneFriendSetting": true,
+      "allowKtvRoomNotify": true,
+      "shareSetting": 0,
+      "socialSetting": 0,
+      "playRecordSetting": 0,
+      "allowSubscriptionNotify": true,
+      "allowLikedNotify": true,
+      "allowNewFollowerNotify": true,
+      "needRcmdEvent": true,
+      "allowPlaylistShareNotify": true,
+      "allowDJProgramShareNotify": true,
+      "allowDJProgramSubscriptionNotify": true,
+      "allowDJRadioSubscriptionNotify": true,
+      "allowPeopleCanSeeMyPlayRecord": true,
+      "allowFollowedCanSeeMyPlayRecord": true,
+      "allowOfflinePrivateMessageNotify": true,
+      "allowOfflineCommentNotify": true,
+      "allowOfflineCommentReplyNotify": true,
+      "allowOfflineNotify": true,
+      "allowVideoSubscriptionNotify": false,
+      "allowOfflineForwardNotify": true,
+      "sendMiuiMsg": true,
+      "allowImportDoubanPlaylist": true,
+      "allowImportXiamiPlaylist": true,
+      "importedDoubanPlaylist": false,
+      "importedXiamiPlaylist": false,
+      "peopleNearbyCanSeeMe": true,
+      "finishedFollowGuide": true,
+      "userId": 0,
+      "broadcastSetting": 2,
+      "showedSharkBabyVinylEntry": 1,
+      "video_bg_switch_key": 0,
+      "showSearchAtBottomTab": 0,
+      "adRecommendSetting": 1,
+      "socialPlaylistSetting": 0,
+      "showFMAtBottomTabMagicOs": 1,
+      "showSearchAtBottomTabMagicOs": 1,
+      "inNoteBeta": 0,
+      "showFMAtBottomTab": 0,
+      "double_flow_auto_play_switch": 1,
+      "allowNoteRedSongNotify": 1,
+      "allowCommentFavoriteNotify": 1,
+      "fansRequestUpdate": 1,
+      "mutualFollowSeeOnline": 0,
+      "showNoteAtBottomTab": 1,
+      "showMoreLocalsListenLabel": 1,
+      "commentLiveBroadcastSetting": 1,
+      "allowNotePlaySongNotify": 1,
+      "allowThankendNotify": 1,
+      "commentSetting": 2,
+      "showMagentAtBottomTab": 0,
+      "personalizedAdRecommendSwitch": 1,
+      "musicJarReceiveNotifySwitch": 1,
+      "voiceAutoPlay": 1,
+      "user_auto_play_switch": -1,
+      "showSearchMagent": 1,
+      "messageRejectStatus": 0,
+      "showCityMusicStyleLabel": 1,
+      "allowSongRedSongNotify": 1,
+      "reduceAdSwitch": 0
+    },
+    "code": 200
+  },
+  "/eapi/w/v1/user/detail/*": {
+    "level": 9,
+    "listenSongs": 0,
+    "userPoint": {
+      "userId": 0,
+      "balance": 0,
+      "updateTime": 0,
+      "version": 10,
+      "status": 0,
+      "blockBalance": 0
+    },
+    "mobileSign": false,
+    "pcSign": false,
+    "profile": {
+      "privacyItemUnlimit": {
+        "area": true,
+        "college": true,
+        "gender": true,
+        "age": true,
+        "villageAge": true
+      },
+      "avatarDetail": null,
+      "signature": "",
+      "authority": 0,
+      "vipType": 0,
+      "mutual": false,
+      "remarkName": null,
+      "userType": 0,
+      "birthday": 0,
+      "accountStatus": 0,
+      "nickname": "Mock User",
+      "followed": false,
+      "avatarUrl": "",
+      "djStatus": 0,
+      "defaultAvatar": false,
+      "backgroundUrl": "",
+      "avatarImgId": 0,
+      "province": 0,
+      "city": 0,
+      "gender": 0,
+      "backgroundImgId": 0,
+      "detailDescription": "",
+      "experts": {},
+      "authStatus": 0,
+      "expertTags": null,
+      "avatarImgIdStr": "0",
+      "backgroundImgIdStr": "0",
+      "description": "",
+      "userId": 0,
+      "createTime": 0,
+      "followeds": 0,
+      "follows": 0,
+      "blacklist": false,
+      "eventCount": 0,
+      "allSubscribedCount": 0,
+      "playlistBeSubscribedCount": 0,
+      "avatarImgId_str": "0",
+      "followTime": null,
+      "followMe": false,
+      "artistIdentity": [],
+      "cCount": 0,
+      "inBlacklist": false,
+      "sDJPCount": 0,
+      "playlistCount": 0,
+      "sCount": 0,
+      "newFollows": 0
+    },
+    "peopleCanSeeMyPlayRecord": true,
+    "bindings": [],
+    "adValid": false,
+    "code": 200,
+    "newUser": false,
+    "recallUser": false,
+    "createTime": 0,
+    "createDays": 0,
+    "profileVillageInfo": {
+      "title": "",
+      "imageUrl": null,
+      "targetUrl": ""
+    }
+  },
+  "/eapi/w/v1/user/bindings/*": {
+    "code": 200,
+    "bindings": []
+  }
+}

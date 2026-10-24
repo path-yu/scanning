@@ -49,10 +49,12 @@ type CaptureConfig struct {
 	Mirror        bool   `yaml:"mirror"`
 }
 
-// HookConfig 控制 Windows 进程注入模式。DLL 路径留空时按可执行文件目录自动查找。
+// HookConfig 控制 Windows 进程注入模式。DLL 路径留空时按可执行文件目录自动查找；
+// dll_path 对应 x64，dll_path_x86 对应 32 位目标进程。
 type HookConfig struct {
-	DLLPath string `yaml:"dll_path"`
-	Ports   []int  `yaml:"ports"`
+	DLLPath    string `yaml:"dll_path"`
+	DLLPathX86 string `yaml:"dll_path_x86"`
+	Ports      []int  `yaml:"ports"`
 }
 
 type StoreConfig struct {

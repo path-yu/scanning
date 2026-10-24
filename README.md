@@ -27,7 +27,7 @@
 
 - Go 1.24+
 - Node.js 20+（仅构建前端时需要）
-- Windows 进程注入模式需要 x64 目标进程与相同权限；Hook DLL 使用 [Zig](https://ziglang.org/download/) 交叉编译（也可把 `HOOK_CC` 指向任意支持 `x86_64-windows-gnu` 的编译器）
+- Windows 进程注入模式需要与目标进程相同权限；x64/x86 Hook DLL 使用 [Zig](https://ziglang.org/download/) 交叉编译（也可把 `HOOK_CC` 指向支持对应 target 的编译器）
 - Windows 实时网卡抓包额外需要 [Npcap](https://npcap.com/#download)（安装时勾选 WinPcap 兼容模式）与管理员权限
 
 ## 构建
@@ -48,7 +48,7 @@ Windows 实时网卡版本（纯 Go + syscall，无 cgo 依赖）：
 go build -tags wpcap -ldflags "-s -w" -o bin/scanning.exe ./cmd/scanning
 ```
 
-构建进程注入 Hook DLL（Windows x64）：
+构建进程注入 Hook DLL（Windows x64 + x86）：
 
 ```powershell
 # 安装 Zig 后确保 zig 在 PATH，或显式指定：
@@ -58,9 +58,13 @@ make hook
 zig cc -target x86_64-windows-gnu -shared -O2 `
   -o bin/hook/scanning_hook_x64.dll `
   internal/hook/native/scanning_hook.c -lws2_32
+# Zig 的 32 位 target 名为 x86-windows-gnu（即 i686 ABI）
+zig cc -target x86-windows-gnu -shared -O2 `
+  -o bin/hook/scanning_hook_x86.dll `
+  internal/hook/native/scanning_hook.c -lws2_32
 ```
 
-生成的 DLL 固定放在 `bin/hook/scanning_hook_x64.dll`，程序会优先从可执行文件旁的 `hook/` 目录查找。
+生成的 DLL 固定放在 `bin/hook/scanning_hook_x64.dll` 与 `bin/hook/scanning_hook_x86.dll`，程序会按目标进程位数自动选择，并优先从可执行文件旁的 `hook/` 目录查找。
 
 macOS / Linux 或已安装 GNU Make 的环境：
 
@@ -76,8 +80,11 @@ Windows 一键启动（自动安装前端依赖、编译 `-tags dev` 后端并�
 
 ```powershell
 .\dev.cmd              # 等价于 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev.ps1
+.\dev.cmd -Restart     # 先停止已在运行的 scanning-dev/Vite，再重新启动
 .\dev.ps1 -NoBrowser   # 不自动打开浏览器
 ```
+
+同一时间只能运行一个开发实例。重复启动会提示 8898/5173 端口被占用；使用 `-Restart` 可自动停止本项目的旧开发进程后重启。`dev.cmd` 在启动失败时会暂停，避免窗口一闪而过看不到错误。
 
 也可以分别手动启动：
 
@@ -182,7 +189,7 @@ bin/scanning.exe
 
 实现原理：
 
-- Go 后端通过 `OpenProcess` + `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread(LoadLibraryW)` 注入 `scanning_hook_x64.dll`；
+- Go 后端通过 `OpenProcess` + `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread(LoadLibraryW)` 注入 Hook DLL；按目标进程是否为 WOW64 自动选择 `scanning_hook_x64.dll` 或 `scanning_hook_x86.dll`；
 - DLL 扫描目标进程所有模块的 IAT，把 `ws2_32` 的 `connect`、`WSAConnect`、`WSAIoctl`（用于获取 `ConnectEx`）替换为 detour，并定期重扫新加载模块；
 - detour 在目标 socket 上连接本机代理并完成 HTTP CONNECT 握手，代理按 TLS SNI / HTTP Host 还原域名后复用现有 Flow、规则、断点、重放与会话能力；
 - 不使用 WinDivert、WFP 或内核驱动；只要与目标进程权限/完整性级别相同即可，通常无需管理员。
@@ -192,7 +199,7 @@ bin/scanning.exe
 
 限制：
 
-- 仅 Windows x64；32 位进程需要另行构建 x86 DLL。
+- 仅 Windows 用户态注入；同时支持 x64 与 x86 目标进程（`scanning_hook_x64.dll` / `scanning_hook_x86.dll`）。
 - 目标进程与 Scanning 的权限/完整性级别需匹配；杀软、反作弊或进程保护可能拦截注入。
 - 证书固定（Pinning）的客户端可能拒绝 MITM 解密。
 - 仅接管 `hook.ports`（默认 80/443）的 TCP；UDP/QUIC 不会接管。
@@ -204,6 +211,59 @@ bin/scanning.exe
 - 过滤框直接输入关键字（支持空格，如 `Taylor Swift`）时，会匹配 URL、请求/响应头与完整正文；正文搜索由服务端完成，EAPI 密文会先解密再匹配。
 - 字段过滤语法保持不变，例如 `method:POST and host:*.music.163.com`；纯关键字输入会自动触发正文搜索（约 280ms 防抖）。
 - 响应详情正文工具栏的「全屏」按钮会打开全屏 JSON 视图，使用可折叠树形结构展示；值中的 http(s) 链接可直接点击在新标签页打开。
+
+## 本地 EAPI Mock 服务
+
+`scripts/eapi-mock.mjs` 是一个无第三方依赖的本地网易云 EAPI mock 服务：解密请求中的 `params`，按路径返回预置 JSON，并用 AES-128-ECB 重新加密响应。需要 Node.js 18+。
+
+```powershell
+node scripts/eapi-mock.mjs
+# 指定端口/配置
+node scripts/eapi-mock.mjs --port 18080 --mocks scripts/eapi-mocks.json
+```
+
+默认配置 [scripts/eapi-mocks.json](scripts/eapi-mocks.json) 包含歌曲红心数、搜索联想、`Taylor Swift` 推荐词、歌曲详情等 16 条脱敏路由，未匹配的请求返回 `{"code":200,"data":{},"message":""}`。配置格式：
+
+```json
+{
+  "__default": { "code": 200, "data": {}, "message": "" },
+  "/eapi/song/red/count": { "code": 200, "data": { "count": 22016520, "countDesc": "100w+" } },
+  "/eapi/w/v1/user/detail/*": { "level": 9, "profile": { "nickname": "Mock User" }, "code": 200 }
+}
+```
+
+在 Scanning 中新建请求阶段规则，把目标接口转发到 mock 服务：
+
+```json
+{
+  "name": "mock-song-red-count",
+  "phase": "request",
+  "enabled": true,
+  "match": {
+    "methods": ["POST"],
+    "host": "interfacepc.music.163.com",
+    "path": "/eapi/song/red/count"
+  },
+  "actions": [
+    { "type": "map_remote", "remote": "http://127.0.0.1:18080" }
+  ]
+}
+```
+
+注意：如果配置了 `proxy.upstream_proxy`，转发到 `127.0.0.1:18080` 时可能被上游代理接管；测试 mock 时建议临时清空上游代理。示例响应已脱敏，请勿把真实用户资料、手机号或签名 URL 写入 mock 配置。
+
+也可以手动验证：
+
+```powershell
+# 从 Scanning 取一条原始 EAPI 请求体（params=<hex>）
+curl.exe -s "http://127.0.0.1:8898/api/v1/flows/<flow-id>/body?direction=request&raw=1" -o req.txt
+# 直接请求本地 mock
+curl.exe -s -X POST "http://127.0.0.1:18080/eapi/song/red/count" `
+  -H "Content-Type: application/x-www-form-urlencoded" `
+  --data-binary "@req.txt" -o resp.bin
+```
+
+`resp.bin` 是加密后的响应，需要用同一 AES 密钥解密后查看 JSON。
 
 ## 报文采集
 
@@ -332,8 +392,8 @@ make release
 ## 已知限制
 
 - 系统代理一键接管目前仅 Windows；macOS/Linux 需手动设置。只覆盖 WinINET，不覆盖 WinHTTP 或应用自有网络栈。
-- 桌面应用启动器只能覆盖读取 `HTTP(S)_PROXY` 的应用；直连型应用可使用 Windows 进程注入模式（实验），但仅限 x64 且受权限/杀软限制。
-- 进程注入不接管 UDP/QUIC，不适用于 32 位进程，注入后需重启目标进程才能完全恢复。
+- 桌面应用启动器只能覆盖读取 `HTTP(S)_PROXY` 的应用；直连型应用可使用 Windows 进程注入模式（实验），支持 x64/x86，且受权限/杀软限制。
+- 进程注入不接管 UDP/QUIC；注入后需重启目标进程才能完全恢复。
 - 进程归属为尽力而为：Windows/Linux 有实现，macOS 暂未实现；权限不足时只显示 PID 或未知。
 - 上游代理仅支持 HTTP/HTTPS（可带 Basic 认证），不支持 SOCKS5；修改配置后需要重启。
 - 实时网卡抓包仅 Windows 构建支持，且需要 Npcap 与管理权限；无驱动时使用 PCAP 导入或代理镜像。

@@ -7,7 +7,7 @@
 | 关联文档 | [technical-design.md](technical-design.md) |
 | 更新日期 | 2026-10-23 |
 
-> 实现状态（2026-10-23）：M5a 桌面应用启动器、M5b 进程归属（Windows/Linux）与 M5c 进程注入模式（Windows x64）已落地；macOS 进程归属与注入尚未实现。按用户要求，M5c 不使用 WinDivert/WFP 或内核驱动，改为用户态 DLL 注入 + IAT Hook。
+> 实现状态（2026-10-23）：M5a 桌面应用启动器、M5b 进程归属（Windows/Linux）与 M5c 进程注入模式（Windows x64/x86）已落地；macOS 进程归属与注入尚未实现。按用户要求，M5c 不使用 WinDivert/WFP 或内核驱动，改为用户态 DLL 注入 + IAT Hook。
 
 ## 1. 背景与目标
 
@@ -138,7 +138,7 @@ Web UI 无法直接打开本地文件选择器。方案：
    - Linux：`zenity --file-selection`，不可用时回退 `kdialog`；
 2. 对话框不可用（无桌面、远程 SSH、容器）时，界面提供手动路径输入；
 3. 仅接受绝对路径；启动前校验文件存在、是否为普通文件；
-4. 记录最近使用的应用（路径、参数、工作目录、最后启动时间），持久化到数据目录。
+4. 记录最近使用的应用（路径、参数、工作目录、PID、运行/退出状态、退出码、最后启动时间），持久化到数据目录。
 
 ### 5.4 进程管理
 
@@ -152,14 +152,16 @@ Web UI 无法直接打开本地文件选择器。方案：
 
 启动后自动检测（已实现）：
 
-- 启动约 6 秒后检查同名进程的 TCP 连接与捕获到的 Flow；若 6 秒时无结果，12 秒再复查一次；
+- 启动约 6 秒后检查本次启动的进程、启动后创建的同名子进程，以及捕获到的 Flow；若 6 秒时无结果，12 秒再复查一次；
+- 启动前已存在的同名实例会被排除，避免把旧实例的连接误归因到本次启动；
 - 有 Flow 或存在指向本机代理的连接 → 显示「已走代理」；
 - 只有直连连接 → 显示「未走代理」，并列出前 5 个直连目标 `IP:端口`；
-- 均无 → 显示「未检测到」，提示应用可能尚未发起请求或使用非 TCP 协议。
+- 均无 → 显示「未检测到」，提示应用可能尚未发起请求或使用非 TCP 协议；
+- 进程已退出 → 显示「已退出」并给出退出码，不再把其他同名实例的连接算到本次启动。
 
 若提示未走代理，给出下一步选项：
 
-- 对目标进程使用「进程注入」（Windows x64，实验）；
+- 对目标进程使用「进程注入」（Windows x64/x86，实验）；
 - 使用网卡抓包查看是否有直连流量；
 - 在应用自身设置中手动填写 `127.0.0.1:8899`。
 
@@ -258,12 +260,12 @@ type ClientInfo struct {
 | 组件 | 实现 | 职责 |
 | --- | --- | --- |
 | Go 注入管理器 `internal/hook` | `OpenProcess`、`VirtualAllocEx`、`WriteProcessMemory`、`CreateRemoteThread(LoadLibraryW)` | 写配置、注入 DLL、记录 PID、持久化 `injected.json` |
-| Hook DLL `internal/hook/native` | C + Zig/MinGW，x64 | IAT Hook、CONNECT 握手、进程内日志 |
+| Hook DLL `internal/hook/native` | C + Zig/MinGW，x64/x86 | IAT Hook、CONNECT 握手、进程内日志 |
 | 代理 | 现有 `127.0.0.1:8899` | 识别 `X-Scanning-Hook`；443 走 MITM，80 走明文 HTTP 解析 |
 
 ### 7.3 注入与 Hook 流程
 
-1. API 收到 PID/进程名后校验代理已启动、请求来自回环、目标为 x64；
+1. API 收到 PID/进程名后校验代理已启动、请求来自回环，并按目标进程是否为 WOW64 选择 x64/x86 DLL；
 2. 写入 `%APPDATA%\Scanning\hook\scanning_hook.ini`（UTF-16LE BOM），包含 `proxy` 与 `ports`；
 3. 打开目标进程，分配远程内存写入 DLL 路径，`CreateRemoteThread` 调用 `LoadLibraryW`，并通过模块列表校验加载结果；
 4. DLL 后台线程解析 `ws2_32!connect`、`WSAConnect`、`WSAIoctl` 地址，扫描所有模块的 IAT，将匹配项替换为 detour；延迟加载/新加载模块每 2 秒重扫；
@@ -297,7 +299,8 @@ type ClientInfo struct {
 | 注入后通过 `WSAIoctl` 获取的 `ConnectEx` | 捕获 |
 | 注入前已缓存的 `ConnectEx` 指针 | 可能不捕获；可重启目标后再注入 |
 | UDP / QUIC 443 | 不捕获；当前不阻断 |
-| 32 位进程 / ARM64 | 当前不支持（仅提供 x64 DLL） |
+| 32 位进程 | 支持（注入 `scanning_hook_x86.dll`） |
+| ARM64 | 当前不支持（仅提供 x64/x86 DLL） |
 | 目标权限/完整性级别更高 | 注入失败并返回明确错误 |
 | 杀软/反作弊/进程保护 | 可能拦截 `CreateRemoteThread` 或 `LoadLibrary` |
 | 证书固定（Pinning） | TLS 握手失败，记录失败原因，不尝试绕过 |
@@ -344,7 +347,7 @@ type ClientInfo struct {
 │                                             │
 │ 捕获方式                                    │
 │  ○ 环境变量启动（无需管理员）               │
-│  ● 进程注入（Windows x64，实验）            │
+│  ● 进程注入（Windows x64/x86，实验）       │
 │                                             │
 │ 提示：应用未读取代理设置时，可注入其进程    │
 └─────────────────────────────────────────────┘
@@ -366,7 +369,8 @@ launcher:
   log_stdout: false
 
 hook:
-  dll_path: ""               # 留空时自动查找 bin/hook/scanning_hook_x64.dll
+  dll_path: ""               # x64 DLL；留空时自动查找 bin/hook/scanning_hook_x64.dll
+  dll_path_x86: ""           # x86 DLL；留空时自动查找 bin/hook/scanning_hook_x86.dll
   ports: [80, 443]           # 仅接管这些目标端口的 TCP
 ```
 
@@ -434,12 +438,12 @@ hook:
 | 注入后无法安全卸载 | 中 | 文档说明需重启目标进程恢复；不提供强行卸载 |
 | 证书固定无法解密 | 中 | 明确提示，不承诺覆盖 |
 | QUIC/UDP 导致漏抓 | 中 | 报文观测；后续评估按进程阻断 UDP 443 |
-| 32 位/ARM64 进程不支持 | 低 | 当前明确提示；后续按需构建 x86 DLL |
+| ARM64 进程不支持 | 低 | 当前明确提示；x64/x86 已覆盖主流桌面进程 |
 | 多进程/子进程归因不准 | 低 | 以 TCP 表为准；支持按名称批量注入 |
 
 待决问题：
 
-1. 是否为 32 位/ARM64 进程提供对应 DLL？（当前仅 x64，后续按需）
+1. 是否为 ARM64 进程提供对应 DLL？（当前 x64/x86 已支持，ARM64 后续按需）
 2. 是否默认注入同名子进程？（当前由用户勾选「注入全部同名进程」）
 3. 是否支持按进程阻断 UDP/QUIC？（建议后续评估）
 4. 进程归属是否纳入规则匹配维度？（建议先展示，后续评估）

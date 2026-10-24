@@ -61,8 +61,42 @@ func TestResolveDLLExplicitPath(t *testing.T) {
 	if err := os.WriteFile(path, []byte("test"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := resolveDLL(path)
+	got, ok, _, _ := resolveDLLs(path, "")
 	if !ok || got != path {
-		t.Fatalf("resolveDLL(%q) = %q, %v", path, got, ok)
+		t.Fatalf("resolveDLLs(%q) = %q, %v", path, got, ok)
+	}
+}
+
+func TestResolveDLLsSiblingX86(t *testing.T) {
+	dir := t.TempDir()
+	x64Path := filepath.Join(dir, "scanning_hook_x64.dll")
+	x86Path := filepath.Join(dir, "scanning_hook_x86.dll")
+	for _, path := range []string{x64Path, x86Path} {
+		if err := os.WriteFile(path, []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gotX64, x64OK, gotX86, x86OK := resolveDLLs(x64Path, "")
+	if !x64OK || gotX64 != x64Path {
+		t.Fatalf("x64 = %q, %v", gotX64, x64OK)
+	}
+	if !x86OK || gotX86 != x86Path {
+		t.Fatalf("x86 = %q, %v", gotX86, x86OK)
+	}
+}
+
+func TestResolveDLLsMissingX86(t *testing.T) {
+	dir := t.TempDir()
+	x64Path := filepath.Join(dir, "scanning_hook_x64.dll")
+	if err := os.WriteFile(x64Path, []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missingX86 := filepath.Join(dir, "missing_x86.dll")
+	gotX64, x64OK, gotX86, x86OK := resolveDLLs(x64Path, missingX86)
+	if !x64OK || gotX64 != x64Path {
+		t.Fatalf("x64 = %q, %v", gotX64, x64OK)
+	}
+	if x86OK {
+		t.Fatalf("x86 不应存在: %q", gotX86)
 	}
 }

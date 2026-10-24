@@ -51,6 +51,7 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
   const [cwd, setCwd] = useState('');
   const [chromiumFlags, setChromiumFlags] = useState(false);
   const [logOutput, setLogOutput] = useState(false);
+  const [injectOnLaunch, setInjectOnLaunch] = useState(true);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
     queryKey: ['apps', 'recent'],
     queryFn: api.listRecentApps,
     enabled: open,
+    refetchInterval: open ? 5000 : false,
   });
   const hookStatusQuery = useQuery({
     queryKey: ['hook', 'status'],
@@ -89,7 +91,10 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
   });
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['apps'] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['apps'] }),
+      queryClient.invalidateQueries({ queryKey: ['apps', 'recent'] }),
+    ]);
   };
 
   const pickFile = async () => {
@@ -109,17 +114,19 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
   };
 
   const launch = async (override?: LaunchAppRequest) => {
-    const payload: LaunchAppRequest =
-      override ?? {
-        path: path.trim(),
-        args: argsText
-          .split('\n')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        cwd: cwd.trim() || undefined,
-        chromiumFlags,
-        logOutput,
-      };
+    const payload: LaunchAppRequest = override
+      ? { ...override, skipInject: !injectOnLaunch }
+      : {
+          path: path.trim(),
+          args: argsText
+            .split('\n')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          cwd: cwd.trim() || undefined,
+          chromiumFlags,
+          logOutput,
+          skipInject: !injectOnLaunch,
+        };
     if (!payload.path) {
       setError('请先选择或填写应用路径');
       return;
@@ -213,7 +220,7 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
       <DialogContent sx={{ pt: 0.5, pb: 1 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <Alert severity="info" sx={{ py: 0.35 }}>
-            应用将以子进程方式启动，并注入 HTTP(S)_PROXY=http://127.0.0.1:8899，不会修改系统代理。Hook DLL 就绪时还会自动注入同名进程；注入失败的应用可改用网卡抓包或在应用内手动设置代理。
+            应用将以子进程方式启动，并注入 HTTP(S)_PROXY=http://127.0.0.1:8899，不会修改系统代理。Hook DLL 就绪时默认自动注入；可在下方关闭「启动时注入 Hook」，避免部分 32 位应用因注入而启动崩溃。
           </Alert>
 
           {error ? <Alert severity="error">{error}</Alert> : null}
@@ -274,6 +281,18 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
             />
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Tooltip title="关闭后不注入 Hook DLL，仅设置代理环境变量；可避免部分 32 位应用因注入而启动崩溃">
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={injectOnLaunch}
+                      onChange={(event) => setInjectOnLaunch(event.target.checked)}
+                    />
+                  }
+                  label={<Typography sx={{ fontSize: 11 }}>启动时注入 Hook</Typography>}
+                />
+              </Tooltip>
               <Tooltip title="仅适用于 Chromium/Electron 类应用；普通应用可能因未知参数退出">
                 <FormControlLabel
                   control={
@@ -352,6 +371,13 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
                             </Box>
                           </Tooltip>
                           <DiagnosisLine diagnosis={app.diagnosis} />
+                          {app.status !== 'running' ? (
+                            <Box component="span" sx={{ display: 'block', color: 'text.disabled' }}>
+                              {app.exitCode ? `退出码 ${app.exitCode}` : ''}
+                              {app.exitCode && app.endedAt ? ' · ' : ''}
+                              {app.endedAt ? `结束 ${formatDateTime(app.endedAt)}` : ''}
+                            </Box>
+                          ) : null}
                           {app.error ? <Box component="span" sx={{ color: 'error.main' }}>{app.error}</Box> : null}
                           {app.logPath ? <Box component="span" sx={{ display: 'block', color: 'text.disabled' }}>日志：{app.logPath}</Box> : null}
                         </Box>
@@ -402,18 +428,23 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
               <Alert severity="warning" sx={{ py: 0.35 }}>
-                仅 Windows x64。注入使用 CreateRemoteThread + IAT Hook，需与目标进程同权限，可能被安全软件拦截。仅对明确授权的应用使用。
+                支持 Windows x64/x86 目标。注入使用 CreateRemoteThread + IAT Hook，需与目标进程同权限，可能被安全软件拦截。仅对明确授权的应用使用。
               </Alert>
 
               {!hookStatus?.supported ? (
                 <Alert severity="info" sx={{ py: 0.35 }}>当前平台不支持进程注入。</Alert>
-              ) : !hookStatus.dllExists ? (
+              ) : !hookStatus.dllExists && !hookStatus.dllExistsX86 ? (
                 <Alert severity="warning" sx={{ py: 0.35 }}>
-                  未找到 Hook DLL：<Box component="span" className="mono">{hookStatus.dllPath}</Box>。请先执行 make hook。
+                  未找到 Hook DLL：x64 <Box component="span" className="mono">{hookStatus.dllPath}</Box>；x86{' '}
+                  <Box component="span" className="mono">{hookStatus.dllPathX86}</Box>。请先执行 make hook。
                 </Alert>
               ) : (
                 <Typography sx={{ fontSize: 9.5, color: 'text.disabled', wordBreak: 'break-all' }}>
-                  DLL：{hookStatus.dllPath} · 代理 {hookStatus.proxyAddr} · 端口 {hookStatus.ports.join('/')}
+                  DLL x64：{hookStatus.dllExists ? hookStatus.dllPath : '缺失'}
+                  <br />
+                  DLL x86：{hookStatus.dllExistsX86 ? hookStatus.dllPathX86 : '缺失'}
+                  <br />
+                  代理 {hookStatus.proxyAddr} · 端口 {hookStatus.ports.join('/')}
                 </Typography>
               )}
 
@@ -500,6 +531,14 @@ export function AppLauncherDialog({ open, onClose }: AppLauncherDialogProps) {
                             <Typography className="mono" sx={{ fontSize: 9.5, color: 'text.disabled' }}>
                               PID {process.pid}
                             </Typography>
+                            {process.arch ? (
+                              <Chip
+                                size="small"
+                                label={process.arch}
+                                variant="outlined"
+                                sx={{ height: 16, fontSize: 8.5 }}
+                              />
+                            ) : null}
                             {process.injected ? (
                               <Chip
                                 size="small"
@@ -617,7 +656,16 @@ function RecentRow({ item, busy, onLaunch }: { item: RecentApp; busy: boolean; o
                 {item.path}
               </Box>
             </Tooltip>
-            <Box component="span" sx={{ color: 'text.disabled' }}>{formatDateTime(item.lastLaunchedAt)}</Box>
+            <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+              {item.status ? <StatusChip status={item.status} /> : null}
+              <Box component="span" sx={{ color: 'text.disabled' }}>{formatDateTime(item.lastLaunchedAt)}</Box>
+              {item.exitCode ? (
+                <Box component="span" className="mono" sx={{ color: 'text.disabled' }}>
+                  退出码 {item.exitCode}
+                </Box>
+              ) : null}
+            </Box>
+            {item.error ? <Box component="span" sx={{ display: 'block', color: 'error.main' }}>{item.error}</Box> : null}
           </Box>
         }
         primaryTypographyProps={{ sx: { fontSize: 11.5, fontWeight: 650 } }}
@@ -633,13 +681,22 @@ function DiagnosisLine({ diagnosis }: { diagnosis?: AppDiagnosis }) {
     proxy: { label: '已走代理', color: 'success' as const },
     direct: { label: '未走代理', color: 'warning' as const },
     unknown: { label: '未检测到', color: 'default' as const },
+    exited: { label: '已退出', color: 'default' as const },
   }[diagnosis.status];
   return (
     <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', mt: 0.25 }}>
       <Chip size="small" label={meta.label} color={meta.color} variant="outlined" sx={{ height: 16, fontSize: 8.5 }} />
       <Box
         component="span"
-        sx={{ fontSize: 9.5, color: diagnosis.status === 'direct' ? 'warning.main' : 'text.secondary' }}
+        sx={{
+          fontSize: 9.5,
+          color:
+            diagnosis.status === 'direct'
+              ? 'warning.main'
+              : diagnosis.status === 'exited'
+                ? 'text.disabled'
+                : 'text.secondary',
+        }}
       >
         {diagnosis.message}
       </Box>

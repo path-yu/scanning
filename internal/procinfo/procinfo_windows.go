@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -27,6 +28,7 @@ var (
 	procCreateToolhelp32Snapshot   = kernel32.NewProc("CreateToolhelp32Snapshot")
 	procProcess32FirstW            = kernel32.NewProc("Process32FirstW")
 	procProcess32NextW             = kernel32.NewProc("Process32NextW")
+	procGetProcessTimes            = kernel32.NewProc("GetProcessTimes")
 )
 
 const th32csSnapProcess = 0x00000002
@@ -134,6 +136,30 @@ func processInfo(pid uint32) Info {
 	info.Path = path
 	info.Name = filepath.Base(path)
 	return info
+}
+
+func processStartTime(pid int) (time.Time, bool) {
+	if pid <= 0 {
+		return time.Time{}, false
+	}
+	handle, _, _ := procOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if handle == 0 {
+		return time.Time{}, false
+	}
+	defer procCloseHandle.Call(handle)
+
+	var creation, exit, kernel, user syscall.Filetime
+	ret, _, _ := procGetProcessTimes.Call(
+		handle,
+		uintptr(unsafe.Pointer(&creation)),
+		uintptr(unsafe.Pointer(&exit)),
+		uintptr(unsafe.Pointer(&kernel)),
+		uintptr(unsafe.Pointer(&user)),
+	)
+	if ret == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(0, creation.Nanoseconds()), true
 }
 
 func processIDsByPath(path string) []int {

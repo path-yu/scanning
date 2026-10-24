@@ -394,7 +394,7 @@ export interface AppEndpoint {
   count: number;
 }
 
-export type AppDiagnosisStatus = 'checking' | 'proxy' | 'direct' | 'unknown';
+export type AppDiagnosisStatus = 'checking' | 'proxy' | 'direct' | 'unknown' | 'exited';
 
 export interface AppDiagnosis {
   status: AppDiagnosisStatus;
@@ -435,6 +435,11 @@ export interface RecentApp {
   path: string;
   args?: string[];
   cwd?: string;
+  pid?: number;
+  status?: LaunchedAppStatus;
+  exitCode?: number;
+  endedAt?: string;
+  error?: string;
   lastLaunchedAt: string;
 }
 
@@ -445,12 +450,15 @@ export interface LaunchAppRequest {
   env?: Record<string, string>;
   chromiumFlags?: boolean;
   logOutput?: boolean;
+  skipInject?: boolean;
 }
 
 export interface HookProcess {
   pid: number;
   name: string;
   path?: string;
+  arch?: 'x64' | 'x86' | string;
+  dll?: string;
   injected: boolean;
   injectedAt?: string;
   message?: string;
@@ -461,6 +469,8 @@ export interface HookStatus {
   supported: boolean;
   dllPath: string;
   dllExists: boolean;
+  dllPathX86: string;
+  dllExistsX86: boolean;
   proxyAddr: string;
   ports: number[];
   logPath: string;

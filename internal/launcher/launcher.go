@@ -43,6 +43,7 @@ type LaunchRequest struct {
 	Env           map[string]string `json:"env,omitempty"`
 	ChromiumFlags bool              `json:"chromiumFlags,omitempty"`
 	LogOutput     bool              `json:"logOutput,omitempty"`
+	SkipInject    bool              `json:"skipInject,omitempty"`
 }
 
 type App struct {
@@ -77,11 +78,16 @@ type Diagnosis struct {
 }
 
 type Recent struct {
-	Name           string    `json:"name"`
-	Path           string    `json:"path"`
-	Args           []string  `json:"args,omitempty"`
-	Cwd            string    `json:"cwd,omitempty"`
-	LastLaunchedAt time.Time `json:"lastLaunchedAt"`
+	Name           string     `json:"name"`
+	Path           string     `json:"path"`
+	Args           []string   `json:"args,omitempty"`
+	Cwd            string     `json:"cwd,omitempty"`
+	PID            int        `json:"pid,omitempty"`
+	Status         string     `json:"status,omitempty"`
+	ExitCode       int        `json:"exitCode,omitempty"`
+	EndedAt        *time.Time `json:"endedAt,omitempty"`
+	Error          string     `json:"error,omitempty"`
+	LastLaunchedAt time.Time  `json:"lastLaunchedAt"`
 }
 
 type Manager struct {
@@ -91,7 +97,7 @@ type Manager struct {
 	apps            map[string]*App
 	order           []string
 	recent          []Recent
-	flowCounter     func(appName string, pid int, since time.Time) int
+	flowCounter     func(appName string, pids []int, since time.Time) int
 	startupInjector func(pid int) error
 }
 
@@ -106,7 +112,7 @@ func NewManager(dataDir string) *Manager {
 }
 
 // SetFlowCounter 注入 Flow 统计函数，用于判断启动后是否真的经代理产生了请求。
-func (m *Manager) SetFlowCounter(fn func(appName string, pid int, since time.Time) int) {
+func (m *Manager) SetFlowCounter(fn func(appName string, pids []int, since time.Time) int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.flowCounter = fn
@@ -174,7 +180,7 @@ func (m *Manager) Launch(proxyAddr string, req LaunchRequest) (*App, error) {
 	m.mu.Lock()
 	injector := m.startupInjector
 	m.mu.Unlock()
-	suspended := injector != nil && suspendedStartSupported
+	suspended := injector != nil && suspendedStartSupported && !req.SkipInject
 
 	cmd := exec.Command(executable, args...)
 	cmd.Dir = cwd
@@ -280,6 +286,11 @@ func (m *Manager) wait(id string, cmd *exec.Cmd, logFile *os.File) {
 	} else {
 		app.Status = StatusExited
 	}
+	if app.Diagnosis == nil || app.Diagnosis.Status == "checking" ||
+		app.Diagnosis.Status == "unknown" || app.Diagnosis.Status == "direct" {
+		app.Diagnosis = exitDiagnosis(app, now)
+	}
+	m.updateRecentStatusLocked(app)
 }
 
 func (m *Manager) diagnose(id, executable, proxyAddr string, started time.Time) {
@@ -310,18 +321,36 @@ func (m *Manager) checkTraffic(id, executable, proxyAddr string, started time.Ti
 		m.mu.Unlock()
 		return nil
 	}
-	name, pid := app.Name, app.PID
+	snapshot := *app
 	counter := m.flowCounter
 	m.mu.Unlock()
 
-	pids := procinfo.ProcessIDsByPath(executable)
-	if pid > 0 && !containsInt(pids, pid) {
-		pids = append(pids, pid)
+	if snapshot.Status != StatusRunning {
+		return exitDiagnosis(&snapshot, time.Now())
 	}
+
+	pids := procinfo.ProcessIDsByPath(executable)
+	filtered := make([]int, 0, len(pids))
+	// 只统计本次启动的进程和启动后创建的同名子进程，避免把启动前已存在的
+	// 同名实例的连接误归因到本次启动。
+	cutoff := started.Add(-5 * time.Second)
+	for _, candidate := range pids {
+		if candidate == snapshot.PID {
+			filtered = append(filtered, candidate)
+			continue
+		}
+		if created, ok := procinfo.ProcessStartTime(candidate); ok && !created.Before(cutoff) {
+			filtered = append(filtered, candidate)
+		}
+	}
+	if snapshot.PID > 0 && !containsInt(filtered, snapshot.PID) {
+		filtered = append(filtered, snapshot.PID)
+	}
+	pids = filtered
 
 	flows := 0
 	if counter != nil {
-		flows = counter(name, pid, started)
+		flows = counter(snapshot.Name, pids, started)
 	}
 	proxyPort := portOf(proxyAddr)
 	proxied := 0
@@ -339,6 +368,46 @@ func (m *Manager) checkTraffic(id, executable, proxyAddr string, started time.Ti
 		}
 	}
 	return buildDiagnosis(flows, proxied, direct, proxyAddr)
+}
+
+func exitDiagnosis(app *App, at time.Time) *Diagnosis {
+	message := "进程已退出"
+	switch app.Status {
+	case StatusFailed:
+		message = "进程启动失败"
+	default:
+		if app.ExitCode != 0 {
+			message = fmt.Sprintf("进程已退出（退出码 %d）", app.ExitCode)
+		}
+	}
+	if app.Error != "" {
+		message += "：" + app.Error
+	}
+	message += "；未检测到本次启动产生的连接"
+	return &Diagnosis{Status: "exited", CheckedAt: at, Message: message}
+}
+
+// updateRecentStatusLocked 把本次启动的退出状态同步到最近应用列表。
+// 调用方必须持有 m.mu。
+func (m *Manager) updateRecentStatusLocked(app *App) {
+	if app == nil {
+		return
+	}
+	for i := range m.recent {
+		if !strings.EqualFold(m.recent[i].Path, app.Path) {
+			continue
+		}
+		if m.recent[i].PID != 0 && m.recent[i].PID != app.PID {
+			continue
+		}
+		m.recent[i].PID = app.PID
+		m.recent[i].Status = app.Status
+		m.recent[i].ExitCode = app.ExitCode
+		m.recent[i].EndedAt = app.EndedAt
+		m.recent[i].Error = app.Error
+		m.saveRecentLocked()
+		return
+	}
 }
 
 func buildDiagnosis(flows, proxied int, direct map[string]int, proxyAddr string) *Diagnosis {
@@ -469,6 +538,11 @@ func (m *Manager) upsertRecentLocked(app *App, at time.Time) {
 		if strings.EqualFold(m.recent[i].Path, app.Path) {
 			m.recent[i].Args = append([]string(nil), app.Args...)
 			m.recent[i].Cwd = app.Cwd
+			m.recent[i].PID = app.PID
+			m.recent[i].Status = app.Status
+			m.recent[i].ExitCode = app.ExitCode
+			m.recent[i].EndedAt = app.EndedAt
+			m.recent[i].Error = app.Error
 			m.recent[i].LastLaunchedAt = at
 			if i > 0 {
 				item := m.recent[i]
@@ -484,6 +558,11 @@ func (m *Manager) upsertRecentLocked(app *App, at time.Time) {
 		Path:           app.Path,
 		Args:           append([]string(nil), app.Args...),
 		Cwd:            app.Cwd,
+		PID:            app.PID,
+		Status:         app.Status,
+		ExitCode:       app.ExitCode,
+		EndedAt:        app.EndedAt,
+		Error:          app.Error,
 		LastLaunchedAt: at,
 	}}, m.recent...)
 	if len(m.recent) > maxRecent {

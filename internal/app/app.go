@@ -122,8 +122,9 @@ func New(opts Options) (*App, error) {
 	}
 	appLauncher := launcher.NewManager(opts.DataDir)
 	hookManager := hook.New(opts.DataDir, opts.Config.Proxy.Addr, hook.Config{
-		DLLPath: opts.Config.Hook.DLLPath,
-		Ports:   opts.Config.Hook.Ports,
+		DLLPath:    opts.Config.Hook.DLLPath,
+		DLLPathX86: opts.Config.Hook.DLLPathX86,
+		Ports:      opts.Config.Hook.Ports,
 	})
 	// Windows 下应用以挂起状态创建，先注入 Hook DLL 再恢复，确保首批网络连接也经过代理。
 	appLauncher.SetStartupInjector(func(pid int) error {
@@ -143,13 +144,25 @@ func New(opts Options) (*App, error) {
 		return nil
 	})
 	sysProxyManager := sysproxy.NewManager(opts.DataDir)
-	appLauncher.SetFlowCounter(func(appName string, pid int, since time.Time) int {
+	appLauncher.SetFlowCounter(func(appName string, pids []int, since time.Time) int {
+		allowed := make(map[int]bool, len(pids))
+		for _, pid := range pids {
+			if pid > 0 {
+				allowed[pid] = true
+			}
+		}
 		count := 0
 		for _, f := range st.All() {
 			if f.StartedAt.Before(since) {
 				continue
 			}
-			if (pid > 0 && f.Client.PID == pid) || (appName != "" && strings.EqualFold(f.Client.App, appName)) {
+			if len(allowed) > 0 {
+				if allowed[f.Client.PID] {
+					count++
+				}
+				continue
+			}
+			if appName != "" && strings.EqualFold(f.Client.App, appName) {
 				count++
 			}
 		}

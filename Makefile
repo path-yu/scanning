@@ -3,7 +3,8 @@ BIN := bin/scanning$(shell go env GOEXE)
 LDFLAGS := -s -w -X scanning/internal/version.Version=$(VERSION)
 # 进程注入 Hook DLL 使用 Zig/MinGW 交叉编译，不依赖 MSVC。
 HOOK_CC ?= zig
-HOOK_DLL := bin/hook/scanning_hook_x64.dll
+HOOK_X64 := bin/hook/scanning_hook_x64.dll
+HOOK_X86 := bin/hook/scanning_hook_x86.dll
 
 .PHONY: web build build-wpcap hook run dev test vet clean release release-windows release-linux release-darwin
 
@@ -12,7 +13,8 @@ web:
 
 hook:
 	@mkdir -p bin/hook
-	$(HOOK_CC) cc -target x86_64-windows-gnu -shared -O2 -o $(HOOK_DLL) internal/hook/native/scanning_hook.c -lws2_32
+	$(HOOK_CC) cc -target x86_64-windows-gnu -shared -O2 -o $(HOOK_X64) internal/hook/native/scanning_hook.c -lws2_32
+	$(HOOK_CC) cc -target x86-windows-gnu -shared -O2 -o $(HOOK_X86) internal/hook/native/scanning_hook.c -lws2_32
 
 build: web
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/scanning

@@ -1,4 +1,4 @@
-// Scanning 进程注入 Hook DLL（Windows x64）
+// Scanning 进程注入 Hook DLL（Windows x64/x86）
 //
 // 原理：参考 Proxifier 的用户态方案，不依赖 WinDivert / 内核驱动。
 // 由 Go 注入器通过 CreateRemoteThread + LoadLibrary 加载到目标进程后：
@@ -31,9 +31,46 @@
 #define WSAAPI __stdcall
 #endif
 
+#ifndef NTAPI
+#define NTAPI __stdcall
+#endif
+
 #ifndef CFG_CALL_TARGET_VALID
 #define CFG_CALL_TARGET_VALID 0x00000001
 #endif
+
+// LdrRegisterDllNotification：模块加载完成时立即补 IAT，避免延迟加载的
+// 网络模块（如 mstscax.dll）在首次扫描后、下一次轮询前发起直连。
+#define SCANNING_LDR_DLL_NOTIFICATION_REASON_LOADED 1
+
+typedef struct _SCANNING_LDR_DLL_LOADED_DATA {
+    ULONG Flags;
+    UNICODE_STRING FullDllName;
+    UNICODE_STRING BaseDllName;
+    PVOID DllBase;
+    ULONG SizeOfImage;
+} SCANNING_LDR_DLL_LOADED_DATA, *PSCANNING_LDR_DLL_LOADED_DATA;
+
+typedef struct _SCANNING_LDR_DLL_UNLOADED_DATA {
+    ULONG Flags;
+    UNICODE_STRING FullDllName;
+    UNICODE_STRING BaseDllName;
+    PVOID DllBase;
+    ULONG SizeOfImage;
+} SCANNING_LDR_DLL_UNLOADED_DATA, *PSCANNING_LDR_DLL_UNLOADED_DATA;
+
+typedef union _SCANNING_LDR_DLL_NOTIFICATION_DATA {
+    ULONG Flags;
+    SCANNING_LDR_DLL_LOADED_DATA Loaded;
+    SCANNING_LDR_DLL_UNLOADED_DATA Unloaded;
+} SCANNING_LDR_DLL_NOTIFICATION_DATA, *PSCANNING_LDR_DLL_NOTIFICATION_DATA;
+
+typedef VOID(NTAPI *SCANNING_LDR_DLL_NOTIFICATION_FUNCTION)(
+    ULONG reason, PSCANNING_LDR_DLL_NOTIFICATION_DATA data, PVOID context);
+
+typedef LONG(NTAPI *FN_LdrRegisterDllNotification)(
+    ULONG flags, SCANNING_LDR_DLL_NOTIFICATION_FUNCTION callback,
+    PVOID context, PVOID *cookie);
 
 typedef struct _SCANNING_CFG_CALL_TARGET_INFO {
     ULONG_PTR Offset;
@@ -72,7 +109,9 @@ static FN_WSA_IOCTL g_real_wsaioc = NULL;
 static FN_CONNECT_EX g_real_connectex = NULL;
 static CRITICAL_SECTION g_lock;
 static BOOL g_lock_ready = FALSE;
-static BOOL g_enabled = FALSE;
+static CRITICAL_SECTION g_patch_lock;
+static BOOL g_patch_lock_ready = FALSE;
+static volatile BOOL g_enabled = FALSE;
 static int g_ports[HOOK_MAX_PORTS];
 static int g_port_count = 0;
 static struct in_addr g_proxy_v4;
@@ -330,9 +369,26 @@ static void PatchDelayImports(BYTE *base, SIZE_T size,
     }
 }
 
-static void PatchModule(HMODULE module, const WCHAR *name) {
+static BOOL IsCommittedReadable(const void *address) {
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery(address, &mbi, sizeof(mbi)) == 0) {
+        return FALSE;
+    }
+    if (mbi.State != MEM_COMMIT) {
+        return FALSE;
+    }
+    if ((mbi.Protect & PAGE_NOACCESS) || (mbi.Protect & PAGE_GUARD)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void PatchModule(HMODULE module, const WCHAR *name, BOOL log) {
     BYTE *base = (BYTE *)module;
     if (base == NULL || base == (BYTE *)g_self) {
+        return;
+    }
+    if (!IsCommittedReadable(base)) {
         return;
     }
     IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
@@ -343,8 +399,19 @@ static void PatchModule(HMODULE module, const WCHAR *name) {
     if (nt->Signature != IMAGE_NT_SIGNATURE) {
         return;
     }
+#ifdef _WIN64
     if (nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
         return;
+    }
+#else
+    if (nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+        return;
+    }
+#endif
+
+    // 模块加载通知与后台轮询可能并发处理同一个模块，写入前先串行化。
+    if (g_patch_lock_ready) {
+        EnterCriticalSection(&g_patch_lock);
     }
     SIZE_T size = nt->OptionalHeader.SizeOfImage;
     IMAGE_DATA_DIRECTORY *dirs = nt->OptionalHeader.DataDirectory;
@@ -370,8 +437,12 @@ static void PatchModule(HMODULE module, const WCHAR *name) {
         PatchDelayImports(base, size, (IMAGE_DELAYLOAD_DESCRIPTOR *)(base + delayRva),
                           &patched);
     }
+    if (g_patch_lock_ready) {
+        LeaveCriticalSection(&g_patch_lock);
+    }
 
-    if (patched > 0) {
+    // 加载通知回调运行在加载器锁内，不能做文件 IO，只在轮询路径写日志。
+    if (patched > 0 && log) {
         CHAR nameA[260] = {0};
         WideCharToMultiByte(CP_UTF8, 0, name, -1, nameA, sizeof(nameA), NULL, NULL);
         HookLog("patched %lld IAT entr%s in %s", (long long)patched,
@@ -390,10 +461,42 @@ static void ScanModules(void) {
     entry.dwSize = sizeof(entry);
     if (Module32FirstW(snap, &entry)) {
         do {
-            PatchModule(entry.hModule, entry.szModule);
+            PatchModule(entry.hModule, entry.szModule, TRUE);
         } while (Module32NextW(snap, &entry));
     }
     CloseHandle(snap);
+}
+
+static VOID NTAPI DllNotification(ULONG reason,
+                                  PSCANNING_LDR_DLL_NOTIFICATION_DATA data,
+                                  PVOID context) {
+    (void)context;
+    if (reason != SCANNING_LDR_DLL_NOTIFICATION_REASON_LOADED || data == NULL) {
+        return;
+    }
+    const WCHAR *name = L"<unknown>";
+    if (data->Loaded.BaseDllName.Buffer != NULL) {
+        name = data->Loaded.BaseDllName.Buffer;
+    }
+    PatchModule((HMODULE)data->Loaded.DllBase, name, FALSE);
+}
+
+static void RegisterDllNotifications(void) {
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (ntdll == NULL) {
+        return;
+    }
+    FN_LdrRegisterDllNotification registerFn =
+        (FN_LdrRegisterDllNotification)GetProcAddress(
+            ntdll, "LdrRegisterDllNotification");
+    if (registerFn == NULL) {
+        HookLog("LdrRegisterDllNotification unavailable");
+        return;
+    }
+    PVOID cookie = NULL;
+    LONG status = registerFn(0, DllNotification, NULL, &cookie);
+    HookLog("dll notifications registered status=0x%08lx cookie=%p",
+            (unsigned long)status, cookie);
 }
 
 // ---------------------------------------------------------------------------
@@ -872,12 +975,16 @@ static void RegisterCfgTarget(void *fn) {
 
 static DWORD WINAPI BackgroundThread(LPVOID param) {
     (void)param;
+    /* 等待 DllMain 返回并让加载器锁释放，避免在进程启动早期扫描/加载模块时崩溃。 */
+    Sleep(100);
     g_pid = GetCurrentProcessId();
 
     EnsureLogDir();
     BuildLogPath();
     InitializeCriticalSection(&g_lock);
     g_lock_ready = TRUE;
+    InitializeCriticalSection(&g_patch_lock);
+    g_patch_lock_ready = TRUE;
 
     WCHAR proxyText[256] = L"127.0.0.1:8899";
     WCHAR portsText[128] = L"80,443";
@@ -928,6 +1035,9 @@ static DWORD WINAPI BackgroundThread(LPVOID param) {
     }
     ParsePorts(portsText);
 
+    // 先注册模块加载通知，再执行首次扫描：两者之间加载的模块也能立即补丁。
+    RegisterDllNotifications();
+
     RegisterCfgTarget((void *)Hook_connect);
     RegisterCfgTarget((void *)Hook_WSAConnect);
     RegisterCfgTarget((void *)Hook_WSAIoctl);
@@ -939,23 +1049,24 @@ static DWORD WINAPI BackgroundThread(LPVOID param) {
             (unsigned long)g_pid, proxyA, g_port_count, (void *)g_real_connect,
             (void *)g_real_wsaioc, (void *)g_real_connectex);
 
-    /* 首次 IAT 扫描完成后通知注入器，替代固定时长休眠。 */
+    /* 首次 IAT 扫描完成后立即启用拦截，再通知注入器恢复主线程，避免应用
+     * 启动阶段的首批连接因为等待重扫而走直连。 */
     WCHAR ready_name[64] = {0};
     _snwprintf(ready_name, 63, L"Local\\ScanningHookReady_%lu", (unsigned long)g_pid);
     g_ready_event = CreateEventW(NULL, TRUE, FALSE, ready_name);
 
     ScanModules();
+    g_enabled = TRUE;
     if (g_ready_event != NULL) {
         SetEvent(g_ready_event);
         HookLog("hook ready signalled pid=%lu", (unsigned long)g_pid);
     }
+    HookLog("hook enabled pid=%lu", (unsigned long)g_pid);
 
     for (int i = 0; i < 10; i++) {
         Sleep(200);
         ScanModules();
     }
-    g_enabled = TRUE;
-    HookLog("hook enabled pid=%lu", (unsigned long)g_pid);
 
     for (;;) {
         Sleep(2000);

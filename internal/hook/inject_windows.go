@@ -30,12 +30,12 @@ var (
 
 func supported() bool { return true }
 
-func injectPID(pid int, dllPath string) (string, bool, error) {
+func injectPID(pid int, dllX64, dllX86 string) (string, bool, string, string, error) {
 	if pid <= 0 {
-		return "", false, fmt.Errorf("PID 无效")
+		return "", false, "", "", fmt.Errorf("PID 无效")
 	}
 	if pid == os.Getpid() {
-		return "", false, fmt.Errorf("不能注入 Scanning 自身")
+		return "", false, "", "", fmt.Errorf("不能注入 Scanning 自身")
 	}
 	access := uint32(windows.PROCESS_CREATE_THREAD |
 		windows.PROCESS_VM_OPERATION |
@@ -45,35 +45,38 @@ func injectPID(pid int, dllPath string) (string, bool, error) {
 		windows.SYNCHRONIZE)
 	handle, err := windows.OpenProcess(access, false, uint32(pid))
 	if err != nil {
-		return "", false, fmt.Errorf("打开进程失败（请以相同权限运行，必要时使用管理员）：%w", err)
+		return "", false, "", "", fmt.Errorf("打开进程失败（请以相同权限运行，必要时使用管理员）：%w", err)
 	}
 	defer windows.CloseHandle(handle)
 
 	path := processPathFromHandle(handle)
-	name := ""
-	if path != "" {
-		name = filepath.Base(path)
-	}
-
-	if info, statErr := os.Stat(dllPath); statErr != nil {
-		return path, false, fmt.Errorf("Hook DLL 不存在：%s: %w", dllPath, statErr)
-	} else if info.IsDir() {
-		return path, false, fmt.Errorf("Hook DLL 路径是目录：%s", dllPath)
-	}
-
 	var wow64 bool
-	if err := windows.IsWow64Process(handle, &wow64); err == nil && wow64 {
-		return path, false, fmt.Errorf("%s 是 32 位进程，当前仅提供 x64 Hook DLL", pickInt(name, fmt.Sprintf("PID %d", pid)))
+	if err := windows.IsWow64Process(handle, &wow64); err != nil {
+		return path, false, "", "", fmt.Errorf("检测目标进程位数失败: %w", err)
+	}
+	arch := "x64"
+	dllPath := dllX64
+	if wow64 {
+		arch = "x86"
+		dllPath = dllX86
+	}
+	if strings.TrimSpace(dllPath) == "" {
+		return path, false, arch, "", fmt.Errorf("未找到 %s Hook DLL，请先执行 make hook", arch)
+	}
+	if info, statErr := os.Stat(dllPath); statErr != nil {
+		return path, false, arch, dllPath, fmt.Errorf("%s Hook DLL 不存在：%s: %w", arch, dllPath, statErr)
+	} else if info.IsDir() {
+		return path, false, arch, dllPath, fmt.Errorf("%s Hook DLL 路径是目录：%s", arch, dllPath)
 	}
 
 	dllName := filepath.Base(dllPath)
 	if moduleLoaded(pid, dllName) {
-		return path, true, nil
+		return path, true, arch, dllPath, nil
 	}
 
 	dllUTF16, err := windows.UTF16PtrFromString(dllPath)
 	if err != nil {
-		return path, false, fmt.Errorf("DLL 路径编码失败: %w", err)
+		return path, false, arch, dllPath, fmt.Errorf("DLL 路径编码失败: %w", err)
 	}
 	dllLen := 0
 	for p := unsafe.Pointer(dllUTF16); *(*uint16)(p) != 0; p = unsafe.Pointer(uintptr(p) + 2) {
@@ -81,65 +84,63 @@ func injectPID(pid int, dllPath string) (string, bool, error) {
 	}
 	size := (dllLen + 1) * 2
 
-	remote, _, callErr := procVirtualAllocEx.Call(
-		uintptr(handle),
-		0,
-		uintptr(size),
-		uintptr(memCommit|memReserve),
-		uintptr(pageRW),
-	)
-	if remote == 0 {
-		return path, false, fmt.Errorf("VirtualAllocEx 失败: %v", callErr)
+	remote, allocErr := allocRemote(handle, uintptr(size), wow64)
+	if allocErr != nil {
+		return path, false, arch, dllPath, fmt.Errorf("远程内存分配失败: %w", allocErr)
 	}
 	defer procVirtualFreeEx.Call(uintptr(handle), remote, 0, uintptr(memRelease))
 
 	var written uintptr
 	if err := windows.WriteProcessMemory(handle, remote, (*byte)(unsafe.Pointer(dllUTF16)), uintptr(size), &written); err != nil {
-		return path, false, fmt.Errorf("写入远程内存失败: %w", err)
+		return path, false, arch, dllPath, fmt.Errorf("写入远程内存失败: %w", err)
 	}
 
+	startAddr, addrErr := loadLibraryAddress(pid, wow64)
+	if addrErr != nil {
+		return path, false, arch, dllPath, fmt.Errorf("解析 LoadLibraryW 地址失败: %w", addrErr)
+	}
 	thread, _, callErr := procCreateRemoteThread.Call(
 		uintptr(handle),
 		0,
 		0,
-		procLoadLibraryW.Addr(),
+		startAddr,
 		remote,
 		0,
 		0,
 	)
 	if thread == 0 {
-		return path, false, fmt.Errorf("CreateRemoteThread 失败（可能被安全软件拦截）：%v", callErr)
+		return path, false, arch, dllPath, fmt.Errorf("CreateRemoteThread 失败（可能被安全软件拦截）：%v", callErr)
 	}
 	threadHandle := windows.Handle(thread)
 	defer windows.CloseHandle(threadHandle)
 
 	event, waitErr := windows.WaitForSingleObject(threadHandle, 8000)
 	if waitErr != nil {
-		return path, false, fmt.Errorf("等待注入线程失败: %w", waitErr)
+		return path, false, arch, dllPath, fmt.Errorf("等待注入线程失败: %w", waitErr)
 	}
 	if event == 258 { // WAIT_TIMEOUT
 		// 线程未退出时 DLL 可能仍已加载，给一次验证机会。
 		if moduleLoaded(pid, dllName) {
-			return path, false, nil
+			return path, false, arch, dllPath, nil
 		}
-		return path, false, fmt.Errorf("注入线程 8 秒未返回")
+		return path, false, arch, dllPath, fmt.Errorf("注入线程 8 秒未返回")
 	}
 	var exitCode uint32
 	ret, _, callErr := procGetExitCodeThread.Call(uintptr(threadHandle), uintptr(unsafe.Pointer(&exitCode)))
 	if ret == 0 {
-		return path, false, fmt.Errorf("读取注入结果失败: %v", callErr)
+		return path, false, arch, dllPath, fmt.Errorf("读取注入结果失败: %v", callErr)
 	}
 	if exitCode == 0 {
-		return path, false, fmt.Errorf("LoadLibraryW 返回 0：可能被安全软件拦截、DLL 路径不可访问或架构不匹配")
+		return path, false, arch, dllPath, fmt.Errorf("LoadLibraryW 返回 0：可能被安全软件拦截、DLL 路径不可访问或架构不匹配")
 	}
 	// 模块列表的更新可能略晚于 LoadLibraryW 返回，短暂重试避免误报注入失败。
 	for attempt := 0; attempt < 10 && !moduleLoaded(pid, dllName); attempt++ {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !moduleLoaded(pid, dllName) {
-		return path, false, fmt.Errorf("LoadLibrary 返回成功，但进程模块列表中未找到 %s", dllName)
+		return path, false, arch, dllPath, fmt.Errorf("LoadLibrary 返回成功，但进程模块列表中未找到 %s", dllName)
 	}
-	return path, false, nil
+	return path, false, arch, dllPath, nil
 }
 
 func processByPID(pid int) (Process, bool) {

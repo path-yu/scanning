@@ -6,8 +6,8 @@ import "fmt"
 
 func supported() bool { return false }
 
-func injectPID(pid int, dllPath string) (string, bool, error) {
-	return "", false, fmt.Errorf("进程注入目前仅支持 Windows")
+func injectPID(pid int, dllX64, dllX86 string) (string, bool, string, string, error) {
+	return "", false, "", "", fmt.Errorf("进程注入目前仅支持 Windows")
 }
 
 func processByPID(pid int) (Process, bool) {

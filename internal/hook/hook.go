@@ -17,14 +17,17 @@ import (
 )
 
 type Config struct {
-	DLLPath string
-	Ports   []int
+	DLLPath    string // x64 Hook DLL；留空时自动查找
+	DLLPathX86 string // x86 Hook DLL；留空时自动查找
+	Ports      []int
 }
 
 type Process struct {
 	PID        int    `json:"pid"`
 	Name       string `json:"name"`
 	Path       string `json:"path,omitempty"`
+	Arch       string `json:"arch,omitempty"`
+	DLL        string `json:"dll,omitempty"`
 	Injected   bool   `json:"injected"`
 	InjectedAt string `json:"injectedAt,omitempty"`
 	Message    string `json:"message,omitempty"`
@@ -32,14 +35,16 @@ type Process struct {
 }
 
 type Status struct {
-	Supported bool      `json:"supported"`
-	DLLPath   string    `json:"dllPath"`
-	DLLExists bool      `json:"dllExists"`
-	ProxyAddr string    `json:"proxyAddr"`
-	Ports     []int     `json:"ports"`
-	LogPath   string    `json:"logPath"`
-	Injected  []Process `json:"injected"`
-	Message   string    `json:"message,omitempty"`
+	Supported    bool      `json:"supported"`
+	DLLPath      string    `json:"dllPath"`
+	DLLExists    bool      `json:"dllExists"`
+	DLLPathX86   string    `json:"dllPathX86"`
+	DLLExistsX86 bool      `json:"dllExistsX86"`
+	ProxyAddr    string    `json:"proxyAddr"`
+	Ports        []int     `json:"ports"`
+	LogPath      string    `json:"logPath"`
+	Injected     []Process `json:"injected"`
+	Message      string    `json:"message,omitempty"`
 }
 
 type InjectRequest struct {
@@ -52,6 +57,8 @@ type injectedRecord struct {
 	PID        int       `json:"pid"`
 	Name       string    `json:"name"`
 	Path       string    `json:"path"`
+	Arch       string    `json:"arch,omitempty"`
+	DLL        string    `json:"dll,omitempty"`
 	InjectedAt time.Time `json:"injectedAt"`
 }
 
@@ -59,8 +66,11 @@ type Manager struct {
 	mu           sync.Mutex
 	dataDir      string
 	proxyAddr    string
-	dllPath      string
+	dllPath      string // x64
 	dllExists    bool
+	dllPathX86   string
+	dllExistsX86 bool
+	dllNames     []string
 	ports        []int
 	configDir    string
 	logPath      string
@@ -81,7 +91,13 @@ func New(dataDir, proxyAddr string, cfg Config) *Manager {
 	}
 	m.logPath = filepath.Join(m.configDir, "scanning_hook.log")
 	m.injectedPath = filepath.Join(m.configDir, "injected.json")
-	m.dllPath, m.dllExists = resolveDLL(cfg.DLLPath)
+	m.dllPath, m.dllExists, m.dllPathX86, m.dllExistsX86 = resolveDLLs(cfg.DLLPath, cfg.DLLPathX86)
+	if m.dllPath != "" {
+		m.dllNames = append(m.dllNames, filepath.Base(m.dllPath))
+	}
+	if m.dllPathX86 != "" {
+		m.dllNames = append(m.dllNames, filepath.Base(m.dllPathX86))
+	}
 	m.loadInjected()
 	return m
 }
@@ -113,32 +129,43 @@ func (m *Manager) Status() Status {
 	proxyAddr := m.proxyAddr
 	dllPath := m.dllPath
 	dllExists := m.dllExists
+	dllPathX86 := m.dllPathX86
+	dllExistsX86 := m.dllExistsX86
 	ports := append([]int(nil), m.ports...)
 	logPath := m.logPath
 	m.mu.Unlock()
 
 	status := Status{
-		Supported: supported(),
-		DLLPath:   dllPath,
-		DLLExists: dllExists,
-		ProxyAddr: proxyAddr,
-		Ports:     ports,
-		LogPath:   logPath,
-		Injected:  []Process{},
+		Supported:    supported(),
+		DLLPath:      dllPath,
+		DLLExists:    dllExists,
+		DLLPathX86:   dllPathX86,
+		DLLExistsX86: dllExistsX86,
+		ProxyAddr:    proxyAddr,
+		Ports:        ports,
+		LogPath:      logPath,
+		Injected:     []Process{},
 	}
 	if !status.Supported {
 		status.Message = "进程注入目前仅支持 Windows"
 		return status
 	}
-	if !dllExists {
-		status.Message = "未找到 Hook DLL，请先执行 make hook 或设置 hook.dll_path"
+	if !dllExists && !dllExistsX86 {
+		status.Message = "未找到 Hook DLL（x64/x86），请先执行 make hook 或设置 hook.dll_path / hook.dll_path_x86"
 		return status
 	}
 	status.Injected = m.refreshInjected()
+	archMessage := "Hook DLL 已就绪（x64/x86）"
+	switch {
+	case !dllExists:
+		archMessage = "仅找到 x86 Hook DLL；64 位目标无法注入"
+	case !dllExistsX86:
+		archMessage = "仅找到 x64 Hook DLL；32 位目标无法注入"
+	}
 	if len(status.Injected) == 0 {
-		status.Message = "Hook DLL 已就绪；注入目标进程后，其 80/443 直连流量将进入代理"
+		status.Message = archMessage + "；注入目标进程后，其 80/443 直连流量将进入代理"
 	} else {
-		status.Message = fmt.Sprintf("已注入 %d 个进程；80/443 直连流量将进入代理", len(status.Injected))
+		status.Message = fmt.Sprintf("%s；已注入 %d 个进程", archMessage, len(status.Injected))
 	}
 	return status
 }
@@ -169,9 +196,11 @@ func (m *Manager) Inject(req InjectRequest) ([]Process, error) {
 	m.mu.Lock()
 	dllPath := m.dllPath
 	dllExists := m.dllExists
+	dllPathX86 := m.dllPathX86
+	dllExistsX86 := m.dllExistsX86
 	m.mu.Unlock()
-	if !dllExists {
-		return nil, fmt.Errorf("未找到 Hook DLL：%s", dllPath)
+	if !dllExists && !dllExistsX86 {
+		return nil, fmt.Errorf("未找到 Hook DLL（x64: %s，x86: %s）", dllPath, dllPathX86)
 	}
 
 	var targets []Process
@@ -201,9 +230,13 @@ func (m *Manager) Inject(req InjectRequest) ([]Process, error) {
 	results := make([]Process, 0, len(targets))
 	for _, target := range targets {
 		result := target
-		path, already, err := injectPID(target.PID, dllPath)
+		path, already, arch, selectedDLL, err := injectPID(target.PID, dllPath, dllPathX86)
 		if path != "" {
 			result.Path = path
+		}
+		result.Arch = arch
+		if selectedDLL != "" {
+			result.DLL = filepath.Base(selectedDLL)
 		}
 		if err != nil {
 			result.Error = err.Error()
@@ -211,9 +244,9 @@ func (m *Manager) Inject(req InjectRequest) ([]Process, error) {
 			continue
 		}
 		result.Injected = true
-		result.Message = "注入成功"
+		result.Message = "注入成功（" + arch + "）"
 		if already {
-			result.Message = "该进程已加载 Hook DLL"
+			result.Message = "该进程已加载 Hook DLL（" + arch + "）"
 		}
 		now := time.Now()
 		m.mu.Lock()
@@ -221,6 +254,8 @@ func (m *Manager) Inject(req InjectRequest) ([]Process, error) {
 			PID:        target.PID,
 			Name:       target.Name,
 			Path:       result.Path,
+			Arch:       arch,
+			DLL:        result.DLL,
 			InjectedAt: now,
 		}
 		m.saveInjectedLocked()
@@ -238,11 +273,23 @@ func (m *Manager) markInjectedState(p *Process) {
 	m.mu.Lock()
 	record, tracked := m.injected[p.PID]
 	m.mu.Unlock()
-	if tracked && !record.InjectedAt.IsZero() {
-		p.InjectedAt = record.InjectedAt.Format(time.RFC3339)
+	if tracked {
+		p.Arch = record.Arch
+		p.DLL = record.DLL
+		if !record.InjectedAt.IsZero() {
+			p.InjectedAt = record.InjectedAt.Format(time.RFC3339)
+		}
+		if record.DLL != "" && moduleLoaded(p.PID, record.DLL) {
+			p.Injected = true
+			return
+		}
 	}
-	if moduleLoaded(p.PID, filepath.Base(m.dllPath)) {
-		p.Injected = true
+	for _, name := range m.dllNames {
+		if moduleLoaded(p.PID, name) {
+			p.Injected = true
+			p.DLL = name
+			return
+		}
 	}
 }
 
@@ -258,7 +305,22 @@ func (m *Manager) refreshInjected() []Process {
 	out := make([]Process, 0, len(records))
 	changed := false
 	for _, record := range records {
-		if !processAlive(record.PID) || !moduleLoaded(record.PID, filepath.Base(m.dllPath)) {
+		dllName := record.DLL
+		loaded := false
+		if processAlive(record.PID) {
+			if dllName != "" {
+				loaded = moduleLoaded(record.PID, dllName)
+			} else {
+				for _, name := range m.dllNames {
+					if moduleLoaded(record.PID, name) {
+						dllName = name
+						loaded = true
+						break
+					}
+				}
+			}
+		}
+		if !loaded {
 			m.mu.Lock()
 			delete(m.injected, record.PID)
 			m.mu.Unlock()
@@ -269,6 +331,8 @@ func (m *Manager) refreshInjected() []Process {
 			PID:        record.PID,
 			Name:       record.Name,
 			Path:       record.Path,
+			Arch:       record.Arch,
+			DLL:        dllName,
 			Injected:   true,
 			InjectedAt: record.InjectedAt.Format(time.RFC3339),
 			Message:    "Hook DLL 已加载",
@@ -326,11 +390,11 @@ func (m *Manager) prepare() error {
 	if err := os.MkdirAll(m.configDir, 0o700); err != nil {
 		return fmt.Errorf("创建 Hook 配置目录 %s: %w", m.configDir, err)
 	}
-	if _, err := os.Stat(m.dllPath); err != nil {
-		m.dllExists = false
-		return fmt.Errorf("Hook DLL 不可用（%s）: %w", m.dllPath, err)
+	m.dllExists = dllFileExists(m.dllPath)
+	m.dllExistsX86 = dllFileExists(m.dllPathX86)
+	if !m.dllExists && !m.dllExistsX86 {
+		return fmt.Errorf("Hook DLL 不可用（x64: %s，x86: %s）", m.dllPath, m.dllPathX86)
 	}
-	m.dllExists = true
 
 	ports := make([]string, 0, len(m.ports))
 	for _, port := range m.ports {
@@ -344,7 +408,64 @@ func (m *Manager) prepare() error {
 	return nil
 }
 
-func resolveDLL(configured string) (string, bool) {
+// resolveDLLs 同时解析 x64/x86 Hook DLL：显式配置优先，否则在可执行文件目录、
+// 工作目录和 APPDATA 目录中查找各自架构的文件名。
+func resolveDLLs(configuredX64, configuredX86 string) (string, bool, string, bool) {
+	roots := dllSearchRoots(configuredX64, configuredX86)
+	x64Path, x64Exists := resolveDLLPath(configuredX64, roots, []string{
+		"scanning_hook_x64.dll",
+		"scanning_hook.dll",
+	})
+	x86Path, x86Exists := resolveDLLPath(configuredX86, roots, []string{
+		"scanning_hook_x86.dll",
+		"scanning_hook32.dll",
+	})
+	return x64Path, x64Exists, x86Path, x86Exists
+}
+
+func dllSearchRoots(configuredX64, configuredX86 string) []string {
+	var roots []string
+	seen := map[string]bool{}
+	add := func(dir string) {
+		if strings.TrimSpace(dir) == "" {
+			return
+		}
+		key := strings.ToLower(filepath.Clean(dir))
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		roots = append(roots, dir)
+	}
+	for _, configured := range []string{configuredX64, configuredX86} {
+		if strings.TrimSpace(configured) == "" {
+			continue
+		}
+		path := configured
+		if !filepath.IsAbs(path) {
+			if abs, err := filepath.Abs(path); err == nil {
+				path = abs
+			}
+		}
+		add(filepath.Dir(path))
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		add(dir)
+		add(filepath.Join(dir, "hook"))
+	}
+	if wd, err := os.Getwd(); err == nil {
+		add(wd)
+		add(filepath.Join(wd, "bin", "hook"))
+		add(filepath.Join(wd, "hook"))
+	}
+	if appdata := os.Getenv("APPDATA"); appdata != "" {
+		add(filepath.Join(appdata, "Scanning", "hook"))
+	}
+	return roots
+}
+
+func resolveDLLPath(configured string, roots, names []string) (string, bool) {
 	var candidates []string
 	if strings.TrimSpace(configured) != "" {
 		path := configured
@@ -355,26 +476,14 @@ func resolveDLL(configured string) (string, bool) {
 		}
 		candidates = append(candidates, path)
 	} else {
-		var roots []string
-		if exe, err := os.Executable(); err == nil {
-			dir := filepath.Dir(exe)
-			roots = append(roots, dir, filepath.Join(dir, "hook"))
-		}
-		if wd, err := os.Getwd(); err == nil {
-			roots = append(roots, wd, filepath.Join(wd, "bin", "hook"), filepath.Join(wd, "hook"))
-		}
 		for _, root := range roots {
-			candidates = append(candidates,
-				filepath.Join(root, "scanning_hook_x64.dll"),
-				filepath.Join(root, "scanning_hook.dll"),
-			)
-		}
-		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			candidates = append(candidates, filepath.Join(appdata, "Scanning", "hook", "scanning_hook_x64.dll"))
+			for _, name := range names {
+				candidates = append(candidates, filepath.Join(root, name))
+			}
 		}
 	}
 	for _, path := range candidates {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		if dllFileExists(path) {
 			return path, true
 		}
 	}
@@ -382,6 +491,14 @@ func resolveDLL(configured string) (string, bool) {
 		return candidates[0], false
 	}
 	return "", false
+}
+
+func dllFileExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func hookConfigDir(dataDir string) string {

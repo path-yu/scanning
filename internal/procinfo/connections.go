@@ -1,5 +1,7 @@
 package procinfo
 
+import "time"
+
 // Connection 是某个进程的一条 TCP 连接快照。
 type Connection struct {
 	PID        int
@@ -18,4 +20,9 @@ func ProcessIDsByPath(path string) []int {
 // ConnectionsForPIDs 返回指定进程当前的 TCP 连接。
 func ConnectionsForPIDs(pids []int) []Connection {
 	return connectionsForPIDs(pids)
+}
+
+// ProcessStartTime 返回进程创建时间；无法获取时返回 false。
+func ProcessStartTime(pid int) (time.Time, bool) {
+	return processStartTime(pid)
 }

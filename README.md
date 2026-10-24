@@ -72,6 +72,15 @@ make test         # go test + 前端类型检查
 
 开发模式（Vite 热更新）：
 
+Windows 一键启动（自动安装前端依赖、编译 `-tags dev` 后端并启动 Vite，Ctrl+C 同时停止前后端）：
+
+```powershell
+.\dev.cmd              # 等价于 powershell -NoProfile -ExecutionPolicy Bypass -File .\dev.ps1
+.\dev.ps1 -NoBrowser   # 不自动打开浏览器
+```
+
+也可以分别手动启动：
+
 ```bash
 # 终端 1
 cd web && npm run dev
@@ -79,7 +88,7 @@ cd web && npm run dev
 go run -tags dev ./cmd/scanning --dev
 ```
 
-开发模式下跳过 API 鉴权，Vite 将 `/api` 代理到 `127.0.0.1:8898`；该模式默认启用演示数据，生产运行默认不生成模拟流量。
+脚本日志写入 `.tmp/dev/logs/`，默认前端 `http://127.0.0.1:5173/`、API `http://127.0.0.1:8898`。开发模式下跳过 API 鉴权，Vite 将 `/api` 代理到 `127.0.0.1:8898`；该模式默认启用演示数据，生产运行默认不生成模拟流量。
 
 ## 运行
 
